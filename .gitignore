@@ -1,0 +1,6 @@
+*.map
+*.z1
+*symbols.c
+*symbols.h
+*.a
+obj_z1/
