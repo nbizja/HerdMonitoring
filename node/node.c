@@ -45,15 +45,13 @@ static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
 
 static void init_send_to_gateway(struct unicast_conn *c)
 {
-    linkaddr_t addr;
-    addr.u8[0] = 0;
+    static linkaddr_t addr;
+    addr.u8[0] = 1;
     addr.u8[1] = 0;
-    if(!linkaddr_cmp(&addr, &linkaddr_node_addr)) {
-    	packetbuf_copyfrom(neighbour_list, 5);
-      unicast_send(c, &addr);
-    }
-  printf("Neighbour list sent to the gateway\n");
-
+  	packetbuf_copyfrom(neighbour_list, 5);
+    unicast_send(c, &addr);
+ 
+  	printf("Neighbour list sent to the gateway\n");
 }
 
 static bool init_timedout = true;
@@ -81,6 +79,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 	static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
 	static struct broadcast_conn broadcast;
 
+
   broadcast_open(&broadcast, 129, &broadcast_call);
 
   static int i;
@@ -102,21 +101,21 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
 	static const struct unicast_callbacks unicast_callbacks = {init_ack_received};
 	static struct unicast_conn uc;
+  PROCESS_EXITHANDLER(unicast_close(&uc);)
+
   unicast_open(&uc, 146, &unicast_callbacks);
-	init_send_to_gateway(&uc);
+  static linkaddr_t addr;
+  addr.u8[0] = 1;
+  addr.u8[1] = 0;
+	packetbuf_copyfrom(neighbour_list, 5);
+  unicast_send(&uc, &addr);
 
-	//WAIT FOR ACK
-  etimer_set(&et, CLOCK_SECOND * 3);
-  if (init_timedout) {
+  int retryCount;
+  for (retryCount = 0; retryCount < 15; retryCount++) {
+  	etimer_set(&et, CLOCK_SECOND * 3);
+		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
   	printf("Failed to send neighbour_list. Retrying....\n");
-
 		init_send_to_gateway(&uc);
-  }
-
-
-
-  while(1) {
-
   }
 
 
