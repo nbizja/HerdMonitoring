@@ -99,7 +99,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 	printf("GATEWAY is waiting....\n");
 
 
-	etimer_set(&et, CLOCK_SECOND*400);
+	etimer_set(&et, CLOCK_SECOND * 10);
 	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
 

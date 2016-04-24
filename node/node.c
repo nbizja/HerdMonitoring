@@ -92,38 +92,36 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
   static int i;
   for (i = 0; i < NUMBER_OF_INIT_BROADCASTS; i++) {
-    etimer_set(&et, CLOCK_SECOND * 100 + random_rand() % 100);
-
+    etimer_set(&et, CLOCK_SECOND + 0.01 * (random_rand() % 100));
   	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
-    packetbuf_copyfrom("Initialization...", 6);
+  	packetbuf_copyfrom("Initialization...", 6);
     broadcast_send(&broadcast);
     printf("broadcast message sent\n");
   }
   broadcast_close(&broadcast);
   printf("initialization broadcasting completed\n");
-  // WAIT 5 SECONDS TO SEND GATHERED RSSI VALUES
-  etimer_set(&et, CLOCK_SECOND * 5);
-	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
 	static const struct unicast_callbacks unicast_callbacks = {init_ack_received};
 	static struct unicast_conn uc;
   PROCESS_EXITHANDLER(unicast_close(&uc);)
 
   unicast_open(&uc, 146, &unicast_callbacks);
-	init_send_to_gateway(&uc);
   
-  int retryCount = 0;
-  for (; retryCount < 15; retryCount++) {
-  	etimer_set(&et, CLOCK_SECOND * 3);
+  int retryCount;
+  for (retryCount = 0; retryCount < 5; retryCount++) {
+  	if (retryCount > 0) {
+  		printf("Failed to send neighbour_list. Retrying....\n");			
+		}
+		etimer_set(&et, CLOCK_SECOND  + 0.01 * (random_rand() % 100));
 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+		init_send_to_gateway(&uc);
+
 		if (!init_timedout) {
 			break;
 		}
-  	printf("Failed to send neighbour_list. Retrying....\n");
-		init_send_to_gateway(&uc);
-  }
 
+  }
 
   PROCESS_END ();
 }
