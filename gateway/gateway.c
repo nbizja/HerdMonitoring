@@ -43,8 +43,16 @@ static void bsort(int arr[][2]) {
 			}
 		}
 	}
-	
- 
+}
+
+static int findPower(int arr[][2], int a) {
+	int n = 5;
+	int i;
+	for (i = 0; i < n; i++) {
+		if (arr[i][0] == a) {
+			return arr[i][1];
+		}
+	}
 }
 
 PROCESS_THREAD (herd_monitor_gateway, ev, data)
@@ -52,9 +60,9 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 	PROCESS_BEGIN();
 	{
 		int n = 5;
-		int i,j;
+		int i,j,c;
 
-		int RSSIarray[5][5] = {{1,1,1,1,1},{-4,-2, 0, 1, 0}, {1,1,1,-9,-2}, {-3,-33,-44,-55,-2}, {1,-5,-6,-7,1}};
+		int RSSIarray[5][5] = {{1,1,1,1,1},{-4,1, 1, 1, 1}, {1,1,1,-9,-2}, {-3,1,-44,-55,1}, {1,-5,-6,-7,1}};
 		int power[n][2];
 
 		//Creating power array. It displays number of neighbours of each node. 
@@ -75,9 +83,45 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 		//               power[0][1] --> number of neighbours
 		//power[0] --> possible cluster heads
 		bsort(power);
-		
 		for (i = 0; i < n; i++) {
 			printf("%d %d\n",power[i][0],power[i][1]);
+		}
+
+		int clusters[n][power[0][1]];
+		//roles: -1 --> head node ; i --> index of head of cluster that belongs to
+		int roles[n];
+
+		for (c = 0; c < n; c++) {
+			roles[c] = 0;
+		}
+
+		int counter = 0;
+		int counter2;
+		for (c = 0; c < n; c++) {
+			counter2 = 1;
+			i = power[c][0];
+			if (roles[i] == 0) {
+				roles[i] = -1;
+				clusters[counter][0] = i;
+				for (j = 0; j < n; j++) {
+					if (RSSIarray[i][j] <= 0 && j != i) {
+						roles[j] = i;
+						clusters[counter][counter2] = j;
+						counter2++;
+					}
+				}
+				counter++;
+			}
+		}
+
+		for (i = 0; i < counter; i++) {
+			printf("START   ");
+			printf("HEAD: %d -- ",clusters[i][0]);
+			int p = findPower(power, clusters[i][0]);
+			for (j = 1; j < p; j++) {
+				printf("%d ", clusters[i][j]);
+			}
+			printf("   FINISH\n");
 		}
 	}
 
