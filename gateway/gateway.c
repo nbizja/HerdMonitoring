@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
-#define NUMBER_OF_COWS 15 //Number of cows
+#define NUMBER_OF_COWS 5 //Number of cows
 
 
 PROCESS (herd_monitor_gateway, "Herd monitor - gateway");
@@ -27,7 +27,7 @@ static int int_cmp(int a[], int b[])
 } 
 
 static void bsort(int arr[][2]) {
-	int n = 5;
+	int n = NUMBER_OF_COWS;
 	int i,j;
 	for (i = 0; i < (n-1); ++i)
 	{
@@ -46,13 +46,14 @@ static void bsort(int arr[][2]) {
 }
 
 static int findPower(int arr[][2], int a) {
-	int n = 5;
+	int n = NUMBER_OF_COWS;
 	int i;
 	for (i = 0; i < n; i++) {
 		if (arr[i][0] == a) {
 			return arr[i][1];
 		}
 	}
+	return 0;
 }
 
 static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
@@ -64,7 +65,7 @@ static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
 	printf("Init message received from cow %d :", cow_id);
 
 	for (i = 0; i < NUMBER_OF_COWS; i++) {
-		RSSIarray[cow_id - 2][i] = *(test + i);
+		RSSIarray[cow_id - 1][i] = *(test + i);
 		printf("%d -> %d ; ", i, *(test + i));
 	}
 	printf("\n");
@@ -83,14 +84,25 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 
 	PROCESS_BEGIN();
 
+    static linkaddr_t addr; //nastavimo nas naslov na 0.0
+    addr.u8[0] = 0;
+    addr.u8[1] = 0;
+  linkaddr_set_node_addr(&addr); 
+  uint16_t shortaddr = (addr.u8[0] << 8) + addr.u8[1];
+  uint8_t longaddr[8];
+  memset(longaddr, 0, sizeof(longaddr));
+  longaddr[0] = addr.u8[0];
+  longaddr[1] = addr.u8[1];
+  cc2420_set_pan_addr(IEEE802154_PANID, shortaddr, longaddr); //spremenimo naslov radia
   	static struct etimer et;
   	unicast_open(&uc, 146, &unicast_callbacks);
 	printf("GATEWAY is waiting....\n");
 
-  	while(1) {
-	    etimer_set(&et, CLOCK_SECOND);
-	    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-  	}
+
+	etimer_set(&et, CLOCK_SECOND*400);
+	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+
+
 	int i,j,c;
 	int power[NUMBER_OF_COWS][2];
 
@@ -121,12 +133,12 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 		printf("%d %d\n",power[i][0],power[i][1]);
 	}
 
-	int clusters[n][power[0][1]];
+	int clusters[n][power[0][1]+1];
 	//roles: -1 --> head node ; i --> index of head of cluster that belongs to
 	int roles[n];
 
 	for (c = 0; c < n; c++) {
-		roles[c] = 0;
+		roles[c] = -2;
 	}
 
 	int counter = 0;
@@ -134,7 +146,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 	for (c = 0; c < n; c++) {
 		counter2 = 1;
 		i = power[c][0];
-		if (roles[i] == 0) {
+		if (roles[i] == -2) {
 			roles[i] = -1;
 			clusters[counter][0] = i;
 			for (j = 0; j < n; j++) {
@@ -149,13 +161,12 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 	}
 
 	for (i = 0; i < counter; i++) {
-		printf("START   ");
-		printf("HEAD: %d -- ",clusters[i][0]);
+		printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
 		int p = findPower(power, clusters[i][0]);
-		for (j = 1; j < p; j++) {
-			printf("%d ", clusters[i][j]);
+		for (j = 1; j <= p; j++) {
+			printf("%d ", clusters[i][j]+1);
 		}
-		printf("   FINISH\n");
+		printf("\n");
 	}
 	
   PROCESS_END ();

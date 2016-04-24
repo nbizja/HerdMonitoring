@@ -14,13 +14,13 @@
 
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
-#define NUMBER_OF_COWS 15 //Number of cows
+#define NUMBER_OF_COWS 5 //Number of cows
 #define NUMBER_OF_INIT_BROADCASTS 3 //Each node sends 3 broadcasts in the initialization phase
 
 PROCESS (herd_monitor_node, "Herd monitor - node");
 AUTOSTART_PROCESSES (&herd_monitor_node);
 
-static int neighbour_list[NUMBER_OF_COWS + 1];
+static int neighbour_list[NUMBER_OF_COWS];
 
 static void reset_neighbour_list()
 {
@@ -37,7 +37,7 @@ static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
 {
 	int cow_id = from->u8[0];
 	int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
-	neighbour_list[cow_id - 2] = rssi;
+	neighbour_list[cow_id - 1] = rssi;
 
   printf("broadcast message received from cow %d with rssi %d \n",
          cow_id, rssi);
@@ -47,7 +47,7 @@ static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
 static void init_send_to_gateway(struct unicast_conn *c)
 {
     static linkaddr_t addr;
-    addr.u8[0] = 1;
+    addr.u8[0] = 0;
     addr.u8[1] = 0;
   	packetbuf_copyfrom(neighbour_list, sizeof(neighbour_list));
     unicast_send(c, &addr);
@@ -66,7 +66,7 @@ static void test_list()
 {
 	printf("List: ");
 	int i;
-	for (i = 0; i < 15; i++) {
+	for (i = 0; i < NUMBER_OF_COWS; i++) {
 		printf("%d -> %d;", i, neighbour_list[i]);
 	}
 	printf("\n");
@@ -92,7 +92,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
   static int i;
   for (i = 0; i < NUMBER_OF_INIT_BROADCASTS; i++) {
-    etimer_set(&et, CLOCK_SECOND * 4 + random_rand() % 10);
+    etimer_set(&et, CLOCK_SECOND * 100 + random_rand() % 100);
 
   	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
@@ -113,11 +113,11 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   unicast_open(&uc, 146, &unicast_callbacks);
 	init_send_to_gateway(&uc);
   
-  int retryCount;
-  for (retryCount = 0; retryCount < 15; retryCount++) {
+  int retryCount = 0;
+  for (; retryCount < 15; retryCount++) {
   	etimer_set(&et, CLOCK_SECOND * 3);
 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-		if (init_ack_received) {
+		if (!init_timedout) {
 			break;
 		}
   	printf("Failed to send neighbour_list. Retrying....\n");
