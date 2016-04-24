@@ -50,13 +50,20 @@ static void bsort(int arr[][2]) {
 static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
 {
 	int cow_id = from->u8[0];
-	int *test = (int *)packetbuf_dataptr();
+	int * test = (int *)packetbuf_dataptr();
+
 	int i;
+	printf("Init message received from cow %d :", cow_id);
+
 	for (i = 0; i < NUMBER_OF_COWS; i++) {
-		RSSIarray[cow_id - 1][i] = *(test + i);
-		printf("Init message received from cow %d : %d \n",from->u8[0], *(test + i));
+		RSSIarray[cow_id - 2][i] = *(test + i);
+		printf("%d -> %d ; ", i, *(test + i));
 	}
-	
+	printf("\n");
+
+	char *ack = "Ack";
+	packetbuf_copyfrom(ack, sizeof(ack));
+  	unicast_send(c, from);
 }
 
 static const struct unicast_callbacks unicast_callbacks = {init_power_received};
@@ -66,10 +73,10 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 {
   	PROCESS_EXITHANDLER(unicast_close(&uc);)
 
-  	static struct etimer et;
 
 	PROCESS_BEGIN();
-	
+
+  	static struct etimer et;
   	unicast_open(&uc, 146, &unicast_callbacks);
 	printf("GATEWAY is waiting....\n");
 

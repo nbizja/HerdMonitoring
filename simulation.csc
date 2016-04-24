@@ -60,12 +60,32 @@
       <moteinterface>org.contikios.cooja.mspmote.interfaces.MspLED</moteinterface>
       <moteinterface>org.contikios.cooja.mspmote.interfaces.MspDebugOutput</moteinterface>
     </motetype>
+    <motetype>
+      org.contikios.cooja.mspmote.Z1MoteType
+      <identifier>z13</identifier>
+      <description>Z1 - Unicast</description>
+      <source EXPORT="discard">[CONTIKI_DIR]/examples/rime/example-unicast.c</source>
+      <commands EXPORT="discard">make example-unicast.z1 TARGET=z1</commands>
+      <firmware EXPORT="copy">[CONTIKI_DIR]/examples/rime/example-unicast.z1</firmware>
+      <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
+      <moteinterface>org.contikios.cooja.interfaces.RimeAddress</moteinterface>
+      <moteinterface>org.contikios.cooja.interfaces.IPAddress</moteinterface>
+      <moteinterface>org.contikios.cooja.interfaces.Mote2MoteRelations</moteinterface>
+      <moteinterface>org.contikios.cooja.interfaces.MoteAttributes</moteinterface>
+      <moteinterface>org.contikios.cooja.mspmote.interfaces.MspClock</moteinterface>
+      <moteinterface>org.contikios.cooja.mspmote.interfaces.MspMoteID</moteinterface>
+      <moteinterface>org.contikios.cooja.mspmote.interfaces.MspButton</moteinterface>
+      <moteinterface>org.contikios.cooja.mspmote.interfaces.Msp802154Radio</moteinterface>
+      <moteinterface>org.contikios.cooja.mspmote.interfaces.MspDefaultSerial</moteinterface>
+      <moteinterface>org.contikios.cooja.mspmote.interfaces.MspLED</moteinterface>
+      <moteinterface>org.contikios.cooja.mspmote.interfaces.MspDebugOutput</moteinterface>
+    </motetype>
     <mote>
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>61.073558288932624</x>
-        <y>13.85165049173941</y>
+        <x>80.77398167403715</x>
+        <y>57.46967673705475</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -82,8 +102,8 @@
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>97.6801509807386</x>
-        <y>78.22011704654204</y>
+        <x>111.82708380308215</x>
+        <y>83.87889017547946</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -100,8 +120,8 @@
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>46.07487715597834</x>
-        <y>7.233647151771752</y>
+        <x>87.22959082097778</x>
+        <y>71.79510421373963</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -136,8 +156,8 @@
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>90.10592992447995</x>
-        <y>80.15716584187881</y>
+        <x>71.58630877523021</x>
+        <y>18.425095344379656</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -154,8 +174,8 @@
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>53.78607935206482</x>
-        <y>10.48596658916789</y>
+        <x>71.30888134116846</x>
+        <y>1.1015536195247577</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -184,23 +204,23 @@
       <skin>org.contikios.cooja.plugins.skins.IDVisualizerSkin</skin>
       <skin>org.contikios.cooja.plugins.skins.AddressVisualizerSkin</skin>
       <skin>org.contikios.cooja.plugins.skins.UDGMVisualizerSkin</skin>
-      <viewport>5.1304213940246575 0.0 0.0 5.1304213940246575 -186.16247388862877 13.524705532088301</viewport>
+      <viewport>3.887768514255855 0.0 0.0 3.887768514255855 -102.3941790870374 65.49042473354797</viewport>
     </plugin_config>
     <width>400</width>
-    <z>2</z>
+    <z>0</z>
     <height>497</height>
-    <location_x>1</location_x>
-    <location_y>1</location_y>
+    <location_x>52</location_x>
+    <location_y>107</location_y>
   </plugin>
   <plugin>
     org.contikios.cooja.plugins.LogListener
     <plugin_config>
-      <filter />
+      <filter>ID:1</filter>
       <formatted_time />
       <coloring />
     </plugin_config>
     <width>1520</width>
-    <z>1</z>
+    <z>2</z>
     <height>240</height>
     <location_x>400</location_x>
     <location_y>160</location_y>
@@ -240,7 +260,7 @@
   <plugin>
     org.contikios.cooja.plugins.SimControl
     <width>280</width>
-    <z>0</z>
+    <z>1</z>
     <height>160</height>
     <location_x>400</location_x>
     <location_y>0</location_y>

@@ -20,10 +20,11 @@
 PROCESS (herd_monitor_node, "Herd monitor - node");
 AUTOSTART_PROCESSES (&herd_monitor_node);
 
-static int8_t neighbour_list[NUMBER_OF_COWS + 1];
+static int neighbour_list[NUMBER_OF_COWS + 1];
 
 static void reset_neighbour_list()
 {
+	printf("Reseting list... \n");
 	int i;
 
 	for (i = 0; i < NUMBER_OF_COWS; i++) {
@@ -35,12 +36,12 @@ static void reset_neighbour_list()
 static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
 	int cow_id = from->u8[0];
-	int8_t rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
-	neighbour_list[cow_id - 1] = rssi;
+	int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
+	neighbour_list[cow_id - 2] = rssi;
 
-  /*printf("broadcast message received from cow %d.%d with rssi %d : '%s'\n",
-         from->u8[0],from->u8[1], rssi, (char *)packetbuf_dataptr());
-   */	
+  printf("broadcast message received from cow %d with rssi %d \n",
+         cow_id, rssi);
+   	
 }
 
 static void init_send_to_gateway(struct unicast_conn *c)
@@ -48,7 +49,7 @@ static void init_send_to_gateway(struct unicast_conn *c)
     static linkaddr_t addr;
     addr.u8[0] = 1;
     addr.u8[1] = 0;
-  	packetbuf_copyfrom(neighbour_list, 5);
+  	packetbuf_copyfrom(neighbour_list, sizeof(neighbour_list));
     unicast_send(c, &addr);
  
   	printf("Neighbour list sent to the gateway\n");
@@ -61,16 +62,23 @@ static void init_ack_received()
 	init_timedout = false;	
 }
 
+static void test_list()
+{
+	printf("List: ");
+	int i;
+	for (i = 0; i < 15; i++) {
+		printf("%d -> %d;", i, neighbour_list[i]);
+	}
+	printf("\n");
+}
+
 
 PROCESS_THREAD (herd_monitor_node, ev, data)
 {
   static struct etimer et;
-
-	reset_neighbour_list();
-
-  //PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 	
 	PROCESS_BEGIN();
+	reset_neighbour_list();	
 
 
   /**********************************************************
@@ -94,7 +102,6 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   }
   broadcast_close(&broadcast);
   printf("initialization broadcasting completed\n");
-
   // WAIT 5 SECONDS TO SEND GATHERED RSSI VALUES
   etimer_set(&et, CLOCK_SECOND * 5);
 	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
@@ -104,16 +111,15 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   PROCESS_EXITHANDLER(unicast_close(&uc);)
 
   unicast_open(&uc, 146, &unicast_callbacks);
-  static linkaddr_t addr;
-  addr.u8[0] = 1;
-  addr.u8[1] = 0;
-	packetbuf_copyfrom(neighbour_list, 5);
-  unicast_send(&uc, &addr);
-
+	init_send_to_gateway(&uc);
+  
   int retryCount;
   for (retryCount = 0; retryCount < 15; retryCount++) {
   	etimer_set(&et, CLOCK_SECOND * 3);
 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+		if (init_ack_received) {
+			break;
+		}
   	printf("Failed to send neighbour_list. Retrying....\n");
 		init_send_to_gateway(&uc);
   }
