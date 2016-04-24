@@ -8,6 +8,7 @@
   <project EXPORT="discard">[APPS_DIR]/powertracker</project>
   <simulation>
     <title>My simulation</title>
+    <speedlimit>1.0</speedlimit>
     <randomseed>123456</randomseed>
     <motedelay_us>1000000</motedelay_us>
     <radiomedium>
@@ -64,8 +65,8 @@
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>45.580351543572206</x>
-        <y>14.36632184560203</y>
+        <x>83.78934100878692</x>
+        <y>2.084860946068728</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -100,8 +101,8 @@
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>109.61376325680683</x>
-        <y>54.8408728022683</y>
+        <x>106.20224634026981</x>
+        <y>52.79396265234608</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -118,8 +119,8 @@
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>115.92685773783815</x>
-        <y>39.971843740835936</y>
+        <x>92.04623932207895</x>
+        <y>57.71173170682849</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -136,8 +137,8 @@
       <breakpoints />
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>44.972079532376554</x>
-        <y>30.449320041739657</y>
+        <x>66.12348441490613</x>
+        <y>-7.7596694234750565</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -186,7 +187,7 @@
       <viewport>1.4656236865667995 0.0 0.0 1.4656236865667995 159.77259747543934 138.5748790269404</viewport>
     </plugin_config>
     <width>400</width>
-    <z>0</z>
+    <z>3</z>
     <height>400</height>
     <location_x>1</location_x>
     <location_y>1</location_y>
@@ -194,7 +195,7 @@
   <plugin>
     org.contikios.cooja.plugins.LogListener
     <plugin_config>
-      <filter />
+      <filter>ID:6</filter>
       <formatted_time />
       <coloring />
     </plugin_config>
@@ -231,7 +232,7 @@
       <decorations>true</decorations>
     </plugin_config>
     <width>686</width>
-    <z>3</z>
+    <z>0</z>
     <height>160</height>
     <location_x>680</location_x>
     <location_y>0</location_y>
