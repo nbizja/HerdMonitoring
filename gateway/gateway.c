@@ -46,14 +46,79 @@ static void bsort(int arr[][2]) {
 }
 
 static int findPower(int arr[][2], int a) {
-	int n = NUMBER_OF_COWS;
 	int i;
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < NUMBER_OF_COWS; i++) {
 		if (arr[i][0] == a) {
 			return arr[i][1];
 		}
 	}
 	return 0;
+}
+
+static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct broadcast_conn *conn)
+{
+	int i,j,c;
+	int power[NUMBER_OF_COWS][2];
+
+	//Creating power array. It displays number of neighbours of each node. 
+	// power[2][1] --> number of neighbours of 3. node
+	// power[2][0] --> 2
+	for (i = 0; i < NUMBER_OF_COWS; i++) {
+		power[i][0] = i;
+		power[i][1] = 0;
+		for (j = 0; j < NUMBER_OF_COWS; j++) {
+			if (RSSI[i][j] <= 0) {
+				power[i][1]++;
+
+			}
+		}
+	}
+	//roles: -1 --> head node ; i --> index of head of cluster that belongs to
+	int roles[NUMBER_OF_COWS];
+
+	//Sorting power by number of neighbours. First element is the one with the most neighbours.
+	//After sorting: power[0][0] --> node with most neighbour (id = power[0][0] + 1)
+	//               power[0][1] --> number of neighbours
+	//power[0] --> possible cluster heads
+	bsort(power);
+	for (i = 0; i < NUMBER_OF_COWS; i++) {
+		printf("%d %d\n",power[i][0],power[i][1]);
+		roles[c] = -2;
+	}
+
+	int clusters[NUMBER_OF_COWS][power[0][1]+1];
+	int counter = 0;
+	int counter2;
+
+	for (c = 0; c < NUMBER_OF_COWS; c++) {
+		counter2 = 1;
+		i = power[c][0];
+		if (roles[i] == -2) {
+			roles[i] = -1;
+			clusters[counter][0] = i;
+			for (j = 0; j < NUMBER_OF_COWS; j++) {
+				if (RSSI[i][j] <= 0 && j != i) {
+					roles[j] = i;
+					clusters[counter][counter2] = j;
+					counter2++;
+				}
+			}
+			counter++;
+		}
+	}
+
+	packetbuf_copyfrom(clusters, sizeof(clusters));
+    broadcast_send(conn);
+
+
+	/*for (i = 0; i < counter; i++) {
+		printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
+		int p = findPower(power, clusters[i][0]);
+		for (j = 1; j <= p; j++) {
+			printf("%d ", clusters[i][j]+1);
+		}
+		printf("\n");
+	}*/
 }
 
 static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
@@ -75,99 +140,50 @@ static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
   	unicast_send(c, from);
 }
 
+static void init_broadcast_recv()
+{
+
+}
+
 static const struct unicast_callbacks unicast_callbacks = {init_power_received};
 static struct unicast_conn uc;
 
+static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
+static struct broadcast_conn broadcast;
+
 PROCESS_THREAD (herd_monitor_gateway, ev, data)
 {
-  	PROCESS_EXITHANDLER(unicast_close(&uc);)
+  	PROCESS_EXITHANDLER(
+  		unicast_close(&uc);
+		broadcast_close(&broadcast);
+	)
 
 	PROCESS_BEGIN();
 
     static linkaddr_t addr; //nastavimo nas naslov na 0.0
     addr.u8[0] = 0;
     addr.u8[1] = 0;
-  linkaddr_set_node_addr(&addr); 
-  uint16_t shortaddr = (addr.u8[0] << 8) + addr.u8[1];
-  uint8_t longaddr[8];
-  memset(longaddr, 0, sizeof(longaddr));
-  longaddr[0] = addr.u8[0];
-  longaddr[1] = addr.u8[1];
-  cc2420_set_pan_addr(IEEE802154_PANID, shortaddr, longaddr); //spremenimo naslov radia
+	linkaddr_set_node_addr(&addr); 
+	uint16_t shortaddr = (addr.u8[0] << 8) + addr.u8[1];
+	uint8_t longaddr[8];
+	memset(longaddr, 0, sizeof(longaddr));
+	longaddr[0] = addr.u8[0];
+	longaddr[1] = addr.u8[1];
+	cc2420_set_pan_addr(IEEE802154_PANID, shortaddr, longaddr); //spremenimo naslov radia
   	static struct etimer et;
   	unicast_open(&uc, 146, &unicast_callbacks);
-	printf("GATEWAY is waiting....\n");
-
+	printf("GATEWAY is waiting for initilization measurements....\n");
 
 	etimer_set(&et, CLOCK_SECOND * 10);
 	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
+	unicast_close(&uc);
 
-	int i,j,c;
-	int power[NUMBER_OF_COWS][2];
+  	broadcast_open(&broadcast, 129, &broadcast_call);
+	printf("GATEWAY is computing clusters....\n");
+	compute_clusters(RSSIarray, &broadcast);
+	broadcast_close(&broadcast);
 
-	//Creating power array. It displays number of neighbours of each node. 
-	// power[2][1] --> number of neighbours of 3. node
-	// power[2][0] --> 2
-	for (i = 0; i < NUMBER_OF_COWS; i++) {
-		power[i][0] = i;
-		power[i][1] = 0;
-		for (j = 0; j < NUMBER_OF_COWS; j++) {
-			if (RSSIarray[i][j] <= 0) {
-				power[i][1]++;
-
-			}
-		}
-	}
-
-	int n = NUMBER_OF_COWS;
-
-	//int RSSIarray[5][5] = {{1,1,1,1,1},{-4,1, 1, 1, 1}, {1,1,1,-9,-2}, {-3,1,-44,-55,1}, {1,-5,-6,-7,1}};
-
-	//Sorting power by number of neighbours. First element is the one with the most neighbours.
-	//After sorting: power[0][0] --> node with most neighbour (id = power[0][0] + 1)
-	//               power[0][1] --> number of neighbours
-	//power[0] --> possible cluster heads
-	bsort(power);
-	for (i = 0; i < n; i++) {
-		printf("%d %d\n",power[i][0],power[i][1]);
-	}
-
-	int clusters[n][power[0][1]+1];
-	//roles: -1 --> head node ; i --> index of head of cluster that belongs to
-	int roles[n];
-
-	for (c = 0; c < n; c++) {
-		roles[c] = -2;
-	}
-
-	int counter = 0;
-	int counter2;
-	for (c = 0; c < n; c++) {
-		counter2 = 1;
-		i = power[c][0];
-		if (roles[i] == -2) {
-			roles[i] = -1;
-			clusters[counter][0] = i;
-			for (j = 0; j < n; j++) {
-				if (RSSIarray[i][j] <= 0 && j != i) {
-					roles[j] = i;
-					clusters[counter][counter2] = j;
-					counter2++;
-				}
-			}
-			counter++;
-		}
-	}
-
-	for (i = 0; i < counter; i++) {
-		printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
-		int p = findPower(power, clusters[i][0]);
-		for (j = 1; j <= p; j++) {
-			printf("%d ", clusters[i][j]+1);
-		}
-		printf("\n");
-	}
 	
   PROCESS_END ();
 }		
