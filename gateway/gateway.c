@@ -55,6 +55,9 @@ static int findPower(int arr[][2], int a) {
 	return 0;
 }
 
+/*
+	Computes clusters and broadcasts them to nodes.
+*/
 static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct broadcast_conn *conn)
 {
 	int i,j,c;
@@ -110,6 +113,7 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
 	packetbuf_copyfrom(clusters, sizeof(clusters));
     broadcast_send(conn);
 
+	printf("GATEWAY broadcasted clusters....\n");
 
 	/*for (i = 0; i < counter; i++) {
 		printf("HEAD: %d -- NODES: ",clusters[i][0]+1);

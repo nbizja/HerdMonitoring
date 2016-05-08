@@ -44,6 +44,11 @@ static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
    	
 }
 
+static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
+{
+	  printf("Clustering results received!\n");
+}
+
 static void init_send_to_gateway(struct unicast_conn *c)
 {
     static linkaddr_t addr;
@@ -62,20 +67,25 @@ static void init_ack_received()
 	init_timedout = false;	
 }
 
-static void test_list()
-{
-	printf("List: ");
-	int i;
-	for (i = 0; i < NUMBER_OF_COWS; i++) {
-		printf("%d -> %d;", i, neighbour_list[i]);
-	}
-	printf("\n");
-}
 
+static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
+static const struct broadcast_callbacks broadcast_clustering_call = {clustering_broadcast_recv};
+static struct broadcast_conn broadcast;
+static struct broadcast_conn broadcast_clustering;
+
+
+static const struct unicast_callbacks unicast_callbacks = {init_ack_received};
+static struct unicast_conn uc;
 
 PROCESS_THREAD (herd_monitor_node, ev, data)
 {
   static struct etimer et;
+
+  PROCESS_EXITHANDLER(
+  	unicast_close(&uc);
+  	broadcast_close(&broadcast);
+
+	)
 	
 	PROCESS_BEGIN();
 	reset_neighbour_list();	
@@ -84,10 +94,6 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   /**********************************************************
 									INITIALIZATION PHASE
   ***********************************************************/
-	static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
-	static struct broadcast_conn broadcast;
-
-
   broadcast_open(&broadcast, 129, &broadcast_call);
 
   static int i;
@@ -99,17 +105,14 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     broadcast_send(&broadcast);
     printf("broadcast message sent\n");
   }
-  broadcast_close(&broadcast);
+	broadcast_close(&broadcast);	
   printf("initialization broadcasting completed\n");
 
-	static const struct unicast_callbacks unicast_callbacks = {init_ack_received};
-	static struct unicast_conn uc;
-  PROCESS_EXITHANDLER(unicast_close(&uc);)
 
   unicast_open(&uc, 146, &unicast_callbacks);
   
   int retryCount;
-  for (retryCount = 0; retryCount < 5; retryCount++) {
+  for (retryCount = 0; retryCount < 3; retryCount++) {
   	if (retryCount > 0) {
   		printf("Failed to send neighbour_list. Retrying....\n");			
 		}
@@ -120,8 +123,13 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 		if (!init_timedout) {
 			break;
 		}
-
   }
+  unicast_close(&uc);
+
+  //LISTENING FOR CLUSTERING RESULTS FROM GATEWAY
+  printf("Listening for clustering results...\n");			
+  broadcast_open(&broadcast_clustering, 129, &broadcast_clustering_call);
+
 
   PROCESS_END ();
 }
