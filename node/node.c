@@ -6,6 +6,7 @@
 #include "net/rime/mesh.h"
 #include "dev/button-sensor.h"
 #include "dev/leds.h"
+#include "node-id.h"
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
@@ -21,6 +22,11 @@ PROCESS (herd_monitor_node, "Herd monitor - node");
 AUTOSTART_PROCESSES (&herd_monitor_node);
 
 static int neighbour_list[NUMBER_OF_COWS];
+
+//0 -> node; 1 -> cluster head;
+static int role = 0;
+static int my_clusters[NUMBER_OF_COWS - 1];
+static int num_of_my_clusters = 0;
 
 static void reset_neighbour_list()
 {
@@ -47,6 +53,46 @@ static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
 static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
 	  printf("Clustering results received!\n");
+
+		int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
+
+		int i,j;
+		int k = 0;
+		//Checking if am cluster head.
+		for (i = 0; i < NUMBER_OF_COWS; i++) {
+			int *cluster = *(clusters + i);
+			int cluster_head = *(cluster) + 1;
+			if (cluster_head == node_id) {
+					role = 1;
+					printf("I, node %d, am Cluster head and these are my nodes: ", node_id);
+					for (j = 1; j < NUMBER_OF_COWS; j++) {
+						int node = *(cluster + j) + 1;
+						if (node == 0) {
+							break;
+						}
+						printf("%d,",node);
+						my_clusters[j] = node;
+					}
+					printf("\n");
+					break;
+			}
+			
+			for (j = 1; j < NUMBER_OF_COWS; j++) {
+				int node = *(cluster + j) + 1;
+				if (node == 0 ) {
+					break;
+				}
+				if (node == node_id) { //We save cluster heads of my clusters.
+					my_clusters[k] = cluster_head;
+					printf("cluster %d,",cluster_head);
+					k++;
+					break;
+				}
+			}
+			printf("\n");
+		}
+		
+		
 }
 
 static void init_send_to_gateway(struct unicast_conn *c)

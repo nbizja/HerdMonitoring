@@ -89,7 +89,13 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
 		roles[c] = -2;
 	}
 
-	int clusters[NUMBER_OF_COWS][power[0][1]+1];
+	//int clusters[NUMBER_OF_COWS][power[0][1]+1];
+	int clusters[NUMBER_OF_COWS][NUMBER_OF_COWS];
+	for (i = 0; i < NUMBER_OF_COWS; i++) {
+		for (j = 0; j < NUMBER_OF_COWS; j++) {
+			clusters[i][j] = -1; //Not a RSSI value (-100 - 0)			
+		}
+	}
 	int counter = 0;
 	int counter2;
 
@@ -110,19 +116,18 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
 		}
 	}
 
-	packetbuf_copyfrom(clusters, sizeof(clusters));
-    broadcast_send(conn);
-
 	printf("GATEWAY broadcasted clusters....\n");
-
-	/*for (i = 0; i < counter; i++) {
+	for (i = 0; i < counter; i++) {
 		printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
 		int p = findPower(power, clusters[i][0]);
 		for (j = 1; j <= p; j++) {
 			printf("%d ", clusters[i][j]+1);
 		}
 		printf("\n");
-	}*/
+	}
+
+	packetbuf_copyfrom(clusters, sizeof(clusters));
+    broadcast_send(conn);
 }
 
 static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
