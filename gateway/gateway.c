@@ -86,14 +86,14 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
 	bsort(power);
 	for (i = 0; i < NUMBER_OF_COWS; i++) {
 		printf("%d %d\n",power[i][0],power[i][1]);
-		roles[c] = -2;
+		roles[i] = -2;
 	}
 
 	//int clusters[NUMBER_OF_COWS][power[0][1]+1];
 	int clusters[NUMBER_OF_COWS][NUMBER_OF_COWS];
 	for (i = 0; i < NUMBER_OF_COWS; i++) {
 		for (j = 0; j < NUMBER_OF_COWS; j++) {
-			clusters[i][j] = -1; //Not a RSSI value (-100 - 0)			
+			clusters[i][j] = -1;	
 		}
 	}
 	int counter = 0;
@@ -115,8 +115,14 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
 			counter++;
 		}
 	}
-
-	printf("GATEWAY broadcasted clusters....\n");
+	printf("Clusters: \n");
+	for (i = 0; i < NUMBER_OF_COWS; i++) {
+		for (j = 0; j < NUMBER_OF_COWS; j++) {
+			printf("[%d][%d] = %d ;", i,j, clusters[i][j]);	
+		}
+		printf("\n");
+	}
+	/*printf("GATEWAY broadcasted clusters....\n");
 	for (i = 0; i < counter; i++) {
 		printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
 		int p = findPower(power, clusters[i][0]);
@@ -124,7 +130,7 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
 			printf("%d ", clusters[i][j]+1);
 		}
 		printf("\n");
-	}
+	} */
 
 	packetbuf_copyfrom(clusters, sizeof(clusters));
     broadcast_send(conn);
