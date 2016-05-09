@@ -8,7 +8,7 @@
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
 #define NUMBER_OF_COWS 5 //Number of cows
-#define PACKET_TIME 0.013
+#define PACKET_TIME 0.15
 
 PROCESS (herd_monitor_gateway, "Herd monitor - gateway");
 AUTOSTART_PROCESSES (&herd_monitor_gateway);
@@ -183,7 +183,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
   	unicast_open(&uc, 146, &unicast_callbacks);
 	printf("GATEWAY is waiting for initilization measurements....\n");
 
-	etimer_set(&et, CLOCK_SECOND );
+	etimer_set(&et, CLOCK_SECOND * 2 );
 	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
 	unicast_close(&uc);

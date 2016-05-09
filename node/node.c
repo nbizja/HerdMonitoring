@@ -17,7 +17,7 @@
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
 #define NUMBER_OF_COWS 5 //Number of cows
 #define NUMBER_OF_INIT_BROADCASTS 3 //Each node sends 3 broadcasts in the initialization phase
-#define PACKET_TIME 0.013
+#define PACKET_TIME 0.15
 
 PROCESS (herd_monitor_node, "Herd monitor - node");
 AUTOSTART_PROCESSES (&herd_monitor_node);
@@ -127,19 +127,16 @@ static struct unicast_conn uc;
 PROCESS_THREAD (herd_monitor_node, ev, data)
 {
 		//Time [ms] for whole round of slots (+1 is for gateway)
-	static int slot_round_time = CLOCK_SECOND * 0.0001 *  PACKET_TIME * NUMBER_OF_COWS + 1;
+	static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * NUMBER_OF_COWS + 1;
 
   static struct etimer et;
   static struct etimer round_timer;
   static struct etimer init_broadcast_timer;
   //printf("timer: %d \n", CLOCK_SECOND * PACKET_TIME * 0.00001 * node_id); 
 
-
-
   PROCESS_EXITHANDLER(
   	unicast_close(&uc);
   	broadcast_close(&broadcast);
-
 	)
 	
 	PROCESS_BEGIN();
@@ -156,23 +153,23 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 										INITIALIZATION PHASE
 	  ***********************************************************/
 		if (init_phase == 1) {
+			broadcast_open(&broadcast, 129, &broadcast_call);
+
 			etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
 
-			broadcast_open(&broadcast, 129, &broadcast_call);
 		  printf("Waiting for my slot...\n"); 
 
 			printf("Timer expired... \n");
 			packetbuf_copyfrom("Initialization...\n", 6);
 		  broadcast_send(&broadcast);
 		  printf("broadcast message sent\n"); 
-			broadcast_close(&broadcast);	
 		  printf("initialization broadcasting completed\n");
-		  init_phase = 0;
 		
 		} else if (init_gateway_phase == 1) {
 			etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
+		  printf("Sending data to the gateway\n"); 
 
 			unicast_open(&uc, 146, &unicast_callbacks);
 		 
@@ -190,6 +187,10 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
 
 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&slot_round_time));
+		if (init_phase == 1) {
+			broadcast_close(&broadcast);	
+			init_phase = 0;
+		}
 	}
 	
 
