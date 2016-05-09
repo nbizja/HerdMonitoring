@@ -183,7 +183,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
   	unicast_open(&uc, 146, &unicast_callbacks);
 	printf("GATEWAY is waiting for initilization measurements....\n");
 
-	etimer_set(&et, CLOCK_SECOND * 2 );
+	etimer_set(&et, CLOCK_SECOND * 3 );
 	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
 	unicast_close(&uc);

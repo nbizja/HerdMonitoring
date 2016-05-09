@@ -74,7 +74,7 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
 						printf("%d,",node);
 						my_clusters[j] = node;
 					}
-					printf("\n");
+					printf("\n");		
 					break;
 			}
 			
@@ -85,12 +85,12 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
 				}
 				if (node == node_id) { //We save cluster heads of my clusters.
 					my_clusters[k] = cluster_head;
-					printf("cluster %d,",cluster_head);
+					printf("cluster %d \n",cluster_head);
 					k++;
 					break;
 				}
 			}
-			printf("\n");
+
 		}
 		broadcast_close(c);
 		
@@ -126,6 +126,12 @@ static struct unicast_conn uc;
 
 PROCESS_THREAD (herd_monitor_node, ev, data)
 {
+  PROCESS_EXITHANDLER(
+  	unicast_close(&uc);
+  	broadcast_close(&broadcast);
+	)
+	
+	PROCESS_BEGIN();
 		//Time [ms] for whole round of slots (+1 is for gateway)
 	static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * NUMBER_OF_COWS + 1;
 
@@ -134,12 +140,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   static struct etimer init_broadcast_timer;
   //printf("timer: %d \n", CLOCK_SECOND * PACKET_TIME * 0.00001 * node_id); 
 
-  PROCESS_EXITHANDLER(
-  	unicast_close(&uc);
-  	broadcast_close(&broadcast);
-	)
-	
-	PROCESS_BEGIN();
+
 
 	static int init_phase = 1;
 	static int init_gateway_phase = 1;
@@ -164,16 +165,15 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 			packetbuf_copyfrom("Initialization...\n", 6);
 		  broadcast_send(&broadcast);
 		  printf("broadcast message sent\n"); 
-		  printf("initialization broadcasting completed\n");
 		
 		} else if (init_gateway_phase == 1) {
+		  printf("Sending data to the gateway\n"); 
+
 			etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
-		  printf("Sending data to the gateway\n"); 
 
 			unicast_open(&uc, 146, &unicast_callbacks);
 		 
-			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 			init_send_to_gateway(&uc);
 		  unicast_close(&uc);
 		  init_gateway_phase = 0;
@@ -186,8 +186,10 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 		}
 
 
-		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&slot_round_time));
+		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&round_timer));
 		if (init_phase == 1) {
+		  printf("Closing broadcast\n");
+
 			broadcast_close(&broadcast);	
 			init_phase = 0;
 		}
