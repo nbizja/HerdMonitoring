@@ -17,9 +17,11 @@
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
 #define NUMBER_OF_COWS 5 //Number of cows
 #define NUMBER_OF_INIT_BROADCASTS 3 //Each node sends 3 broadcasts in the initialization phase
+#define PACKET_TIME 0.013
 
 PROCESS (herd_monitor_node, "Herd monitor - node");
 AUTOSTART_PROCESSES (&herd_monitor_node);
+
 
 static int neighbour_list[NUMBER_OF_COWS];
 
@@ -47,7 +49,6 @@ static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
 
   printf("broadcast message received from cow %d with rssi %d \n",
          cow_id, rssi);
-   	
 }
 
 static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
@@ -91,7 +92,7 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
 			}
 			printf("\n");
 		}
-		
+		broadcast_close(c);
 		
 }
 
@@ -125,7 +126,15 @@ static struct unicast_conn uc;
 
 PROCESS_THREAD (herd_monitor_node, ev, data)
 {
+		//Time [ms] for whole round of slots (+1 is for gateway)
+	static int slot_round_time = CLOCK_SECOND * 0.0001 *  PACKET_TIME * NUMBER_OF_COWS + 1;
+
   static struct etimer et;
+  static struct etimer round_timer;
+  static struct etimer init_broadcast_timer;
+  //printf("timer: %d \n", CLOCK_SECOND * PACKET_TIME * 0.00001 * node_id); 
+
+
 
   PROCESS_EXITHANDLER(
   	unicast_close(&uc);
@@ -134,47 +143,56 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 	)
 	
 	PROCESS_BEGIN();
-	reset_neighbour_list();	
 
+	static int init_phase = 1;
+	static int init_gateway_phase = 1;
+	static int clustering_phase = 1;
 
-  /**********************************************************
-									INITIALIZATION PHASE
-  ***********************************************************/
-  broadcast_open(&broadcast, 129, &broadcast_call);
+	reset_neighbour_list();
+	while(1) {
+		etimer_set(&round_timer, slot_round_time);
 
-  static int i;
-  for (i = 0; i < NUMBER_OF_INIT_BROADCASTS; i++) {
-    etimer_set(&et, CLOCK_SECOND + 0.01 * (random_rand() % 100));
-  	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+	  /**********************************************************
+										INITIALIZATION PHASE
+	  ***********************************************************/
+		if (init_phase == 1) {
+			etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
+			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
 
-  	packetbuf_copyfrom("Initialization...", 6);
-    broadcast_send(&broadcast);
-    printf("broadcast message sent\n");
-  }
-	broadcast_close(&broadcast);	
-  printf("initialization broadcasting completed\n");
+			broadcast_open(&broadcast, 129, &broadcast_call);
+		  printf("Waiting for my slot...\n"); 
 
+			printf("Timer expired... \n");
+			packetbuf_copyfrom("Initialization...\n", 6);
+		  broadcast_send(&broadcast);
+		  printf("broadcast message sent\n"); 
+			broadcast_close(&broadcast);	
+		  printf("initialization broadcasting completed\n");
+		  init_phase = 0;
+		
+		} else if (init_gateway_phase == 1) {
+			etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
+			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
 
-  unicast_open(&uc, 146, &unicast_callbacks);
-  
-  int retryCount;
-  for (retryCount = 0; retryCount < 3; retryCount++) {
-  	if (retryCount > 0) {
-  		printf("Failed to send neighbour_list. Retrying....\n");			
+			unicast_open(&uc, 146, &unicast_callbacks);
+		 
+			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+			init_send_to_gateway(&uc);
+		  unicast_close(&uc);
+		  init_gateway_phase = 0;
+		} else if (clustering_phase == 1) {
+
+				//LISTENING FOR CLUSTERING RESULTS FROM GATEWAY
+			  printf("Listening for clustering results...\n");			
+			  broadcast_open(&broadcast_clustering, 129, &broadcast_clustering_call);
+			  clustering_phase = 0;
 		}
-		etimer_set(&et, CLOCK_SECOND  + 0.01 * (random_rand() % 100));
-		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-		init_send_to_gateway(&uc);
 
-		if (!init_timedout) {
-			break;
-		}
-  }
-  unicast_close(&uc);
 
-  //LISTENING FOR CLUSTERING RESULTS FROM GATEWAY
-  printf("Listening for clustering results...\n");			
-  broadcast_open(&broadcast_clustering, 129, &broadcast_clustering_call);
+		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&slot_round_time));
+	}
+	
+
 
 
   PROCESS_END ();
