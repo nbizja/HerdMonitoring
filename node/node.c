@@ -268,6 +268,9 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     }
 
 
+    /* Optimization option: listening only, when members of cluster have their time slot.
+       Array has to be sorted for that purpose.
+       If 2 members are sequential, connection should not close in beetwen.*/
     if (role == 1 && broadcast_data_open == 0) {     
         printf("Listening to broadcast data (temperature, battery).\n"); 
         broadcast_open(&broadcast_data, 129, &broadcast_data_call);
