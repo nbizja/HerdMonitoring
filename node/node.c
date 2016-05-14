@@ -42,68 +42,78 @@ float floor(float x)
 
 static void reset_neighbour_list()
 {
-	printf("Reseting list... \n");
-	int i;
+  printf("Reseting list... \n");
+  int i;
 
-	for (i = 0; i < NUMBER_OF_COWS; i++) {
-			neighbour_list[i] = 1; //Not a RSSI value (-100 - 0)
-	}
+  for (i = 0; i < NUMBER_OF_COWS; i++) {
+      neighbour_list[i] = 1; //Not a RSSI value (-100 - 0)
+  }
 }
 
 
 static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
-	int cow_id = from->u8[0];
-	int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
-	neighbour_list[cow_id - 1] = rssi;
+  int cow_id = from->u8[0];
+  int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
+  neighbour_list[cow_id - 1] = rssi;
 
   printf("broadcast message received from cow %d with rssi %d \n",
          cow_id, rssi);
 }
 
+static void data_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
+{
+  if (role == 1) {
+      int cow_id = from->u8[0];
+
+      printf("Battery status and temperature received from cow %d \n", cow_id);
+  }
+
+}
+
 static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
-	  printf("Clustering results received!\n");
+    printf("Clustering results received!\n");
 
-		int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
+    int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
 
-		int i,j;
-		int k = 0;
-		//Checking if am cluster head.
-		for (i = 0; i < NUMBER_OF_COWS; i++) {
-			int *cluster = *(clusters + i);
-			int cluster_head = *(cluster) + 1;
-			if (cluster_head == node_id) {
-					role = 1;
-					printf("I, node %d, am Cluster head and these are my nodes: ", node_id);
-					for (j = 1; j < NUMBER_OF_COWS; j++) {
-						int node = *(cluster + j) + 1;
-						if (node == 0) {
-							break;
-						}
-						printf("%d,",node);
-						my_clusters[j] = node;
-					}
-					printf("\n");		
-					break;
-			}
-			
-			for (j = 1; j < NUMBER_OF_COWS; j++) {
-				int node = *(cluster + j) + 1;
-				if (node == 0 ) {
-					break;
-				}
-				if (node == node_id) { //We save cluster heads of my clusters.
-					my_clusters[k] = cluster_head;
-					printf("cluster %d \n",cluster_head);
-					k++;
-					break;
-				}
-			}
+    int i,j;
+    int k = 0;
+    //Checking if am cluster head.
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      int *cluster = *(clusters + i);
+      int cluster_head = *(cluster) + 1;
+      if (cluster_head == node_id) {
+          role = 1;
+          printf("I, node %d, am Cluster head and these are my nodes: ", node_id);
+          for (j = 1; j < NUMBER_OF_COWS; j++) {
+            int node = *(cluster + j) + 1;
+            if (node == 0) {
+              break;
+            }
+            printf("%d,",node);
+            my_clusters[j] = node;
+          }
+          printf("\n");   
+          break;
+      }
+      
+      for (j = 1; j < NUMBER_OF_COWS; j++) {
+        int node = *(cluster + j) + 1;
+        if (node == 0 ) {
+          break;
+        }
+        if (node == node_id) { //We save cluster heads of my clusters.
+          my_clusters[k] = cluster_head;
+          printf("cluster %d \n",cluster_head);
+          k++;
+          break;
+        }
+      }
 
-		}
-		broadcast_close(c);
-		
+    }
+    broadcast_close(c);
+    
 }
 
 static void init_send_to_gateway(struct unicast_conn *c)
@@ -111,24 +121,26 @@ static void init_send_to_gateway(struct unicast_conn *c)
     static linkaddr_t addr;
     addr.u8[0] = 0;
     addr.u8[1] = 0;
-  	packetbuf_copyfrom(neighbour_list, sizeof(neighbour_list));
+    packetbuf_copyfrom(neighbour_list, sizeof(neighbour_list));
     unicast_send(c, &addr);
  
-  	printf("Neighbour list sent to the gateway\n");
+    printf("Neighbour list sent to the gateway\n");
 }
 
 static bool init_timedout = true;
 
 static void init_ack_received()
 {
-	init_timedout = false;	
+  init_timedout = false;  
 }
 
 
 static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
+static const struct broadcast_callbacks broadcast_data_call = {data_broadcast_recv};
 static const struct broadcast_callbacks broadcast_clustering_call = {clustering_broadcast_recv};
 static struct broadcast_conn broadcast;
 static struct broadcast_conn broadcast_clustering;
+static struct broadcast_conn broadcast_data;
 
 
 static const struct unicast_callbacks unicast_callbacks = {init_ack_received};
@@ -137,13 +149,15 @@ static struct unicast_conn uc;
 PROCESS_THREAD (herd_monitor_node, ev, data)
 {
   PROCESS_EXITHANDLER(
-  	unicast_close(&uc);
-  	broadcast_close(&broadcast);
-	)
-	
-	PROCESS_BEGIN();
-		//Time [ms] for whole round of slots (+1 is for gateway)
-	static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1);
+    unicast_close(&uc);
+    broadcast_close(&broadcast);
+    broadcast_close(&broadcast_clustering);
+    broadcast_close(&broadcast_data);
+  )
+  
+  PROCESS_BEGIN();
+    //Time [ms] for whole round of slots (+1 is for gateway)
+  static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1);
 
   static struct etimer et;
   static struct etimer round_timer;
@@ -154,21 +168,18 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   static struct etimer battery_temp_timer;
 
 
-	static int init_phase = 1;
-	static int init_gateway_phase = 1;
-	static int clustering_phase = 1;
+  static int init_phase = 1;
+  static int init_gateway_phase = 1;
+  static int clustering_phase = 1;
 
   //We use this variable for deciding, if 30 seconds expired (we have to mesaure and send the data.)
   static int battery_temp_status = 1;
   static uint16_t battery_status = -1;
   static uint16_t temperature = -1;
 
-  //Activating battery sensor.
-  SENSORS_ACTIVATE(battery_sensor);
-
-	reset_neighbour_list();
-	while(1) {
-		etimer_set(&round_timer, slot_round_time);
+  reset_neighbour_list();
+  while(1) {
+    etimer_set(&round_timer, slot_round_time);
     etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 
     //If 30 seconds expired; we have to set batteryStatus and
@@ -176,8 +187,17 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       etimer_set(&battery_temp_timer, 30 * CLOCK_SECOND);
       battery_temp_status = 0;
     }
-    if(etimer_expired(&battery_temp_timer)) {
+
+
+    /**********************************************************
+                    BATTERY AND TEMPERATURE
+    ***********************************************************/
+    if (etimer_expired(&battery_temp_timer)) {
+        //Activating battery sensor.
+      SENSORS_ACTIVATE(battery_sensor);
       battery_status = battery_sensor.value(0);
+      SENSORS_DEACTIVATE(battery_sensor);
+
       float mv = (battery_status * 2.500 * 2) / 4096;
       temperature = (uint16_t)tmp102_read_temp_raw();
       battery_temp_status = 1;
@@ -186,52 +206,71 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
        (unsigned)((mv - floor(mv)) * 1000), temperature);
     }
 
-	  /**********************************************************
-										INITIALIZATION PHASE
-	  ***********************************************************/
-		if (init_phase == 1) {
-			broadcast_open(&broadcast, 129, &broadcast_call);
+    if (init_phase == 1) {
+      broadcast_open(&broadcast, 129, &broadcast_call);
+    } else if (clustering_phase == 1) {
+        //LISTENING FOR CLUSTERING RESULTS FROM GATEWAY
+        printf("Listening for clustering results...\n");      
+        broadcast_open(&broadcast_clustering, 129, &broadcast_clustering_call);
+        clustering_phase = 0;
+    }
 
-			etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
-			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
-
-		  printf("Waiting for my slot...\n"); 
-
-			printf("Timer expired... \n");
-			packetbuf_copyfrom("Initialization...\n", 6);
-		  broadcast_send(&broadcast);
-		  printf("broadcast message sent\n"); 
-		
-		} else if (init_gateway_phase == 1) {
-		  printf("Sending data to the gateway\n"); 
-
-			etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
-			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
-
-			unicast_open(&uc, 146, &unicast_callbacks);
-		 
-			init_send_to_gateway(&uc);
-		  unicast_close(&uc);
-		  init_gateway_phase = 0;
-		} else if (clustering_phase == 1) {
-
-				//LISTENING FOR CLUSTERING RESULTS FROM GATEWAY
-			  printf("Listening for clustering results...\n");			
-			  broadcast_open(&broadcast_clustering, 129, &broadcast_clustering_call);
-			  clustering_phase = 0;
-		}
+    /***********************************************************
+                    SENDING STUFF
+    ************************************************************/
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
 
 
-		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&round_timer));
-		if (init_phase == 1) {
-		  printf("Closing broadcast\n");
+    /**********************************************************
+                    INITIALIZATION PHASE
+    ***********************************************************/
+    if (init_phase == 1) {
 
-			broadcast_close(&broadcast);	
-			init_phase = 0;
-		}
-	}
-	
-  SENSORS_DEACTIVATE(battery_sensor);
+      printf("Waiting for my slot...\n"); 
+
+      printf("Timer expired... \n");
+      packetbuf_copyfrom("Initialization...\n", 6);
+      broadcast_send(&broadcast);
+      printf("broadcast message sent\n"); 
+    
+    } else if (init_gateway_phase == 1) {
+      printf("Sending data to the gateway\n"); 
+
+      unicast_open(&uc, 146, &unicast_callbacks);
+     
+      init_send_to_gateway(&uc);
+      unicast_close(&uc);
+      init_gateway_phase = 0;
+    }
+
+    /**********************************************************
+                    INITIALIZATION FINISHED
+    ***********************************************************/
+
+    /*Waiting until node's time slot is on; 
+      then it checks if it is the time to send the data (battery, temperature).
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));*/
+    if (battery_temp_status == 1) {
+      broadcast_open(&broadcast_data, 129, &broadcast_data_call);
+      uint16_t packet[2];
+      packet[0] = battery_status;
+      packet[1] = temperature;
+      packetbuf_copyfrom(packet, sizeof(packet));
+      broadcast_send(&broadcast_data);
+      broadcast_close(&broadcast_data);  
+      printf("Temperature and battery status broadcast message sent.\n"); 
+    }
+
+
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&round_timer));
+    if (init_phase == 1) {
+      printf("Closing broadcast\n");
+
+      broadcast_close(&broadcast);  
+      init_phase = 0;
+    }
+  }
+  
   PROCESS_END ();
 }
 
