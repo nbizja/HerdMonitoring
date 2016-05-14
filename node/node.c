@@ -98,7 +98,7 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
           break;
       }
       
-      for (j = 1; j < NUMBER_OF_COWS; j++) {
+      /*for (j = 1; j < NUMBER_OF_COWS; j++) {
         int node = *(cluster + j) + 1;
         if (node == 0 ) {
           break;
@@ -109,7 +109,7 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
           k++;
           break;
         }
-      }
+      }*/
 
     }
     broadcast_close(c);
@@ -177,6 +177,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   static uint16_t battery_status = -1;
   static uint16_t temperature = -1;
 
+  static int broadcast_data_open = 0;
+
   reset_neighbour_list();
   while(1) {
     etimer_set(&round_timer, slot_round_time);
@@ -193,10 +195,10 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
                     BATTERY AND TEMPERATURE
     ***********************************************************/
     if (etimer_expired(&battery_temp_timer)) {
-        //Activating battery sensor.
+      //Activating battery sensor.
       SENSORS_ACTIVATE(battery_sensor);
       battery_status = battery_sensor.value(0);
-      SENSORS_DEACTIVATE(battery_sensor);
+
 
       float mv = (battery_status * 2.500 * 2) / 4096;
       temperature = (uint16_t)tmp102_read_temp_raw();
@@ -204,6 +206,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
       printf("Battery: %i (%ld.%03d mV),   temperature: %d  \n", battery_status, (long)mv,
        (unsigned)((mv - floor(mv)) * 1000), temperature);
+
+      SENSORS_DEACTIVATE(battery_sensor);
     }
 
     if (init_phase == 1) {
@@ -249,18 +253,26 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
     /*Waiting until node's time slot is on; 
       then it checks if it is the time to send the data (battery, temperature).
-    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));*/
-    if (battery_temp_status == 1) {
-      broadcast_open(&broadcast_data, 129, &broadcast_data_call);
-      uint16_t packet[2];
-      packet[0] = battery_status;
-      packet[1] = temperature;
-      packetbuf_copyfrom(packet, sizeof(packet));
-      broadcast_send(&broadcast_data);
-      broadcast_close(&broadcast_data);  
-      printf("Temperature and battery status broadcast message sent.\n"); 
+    ;*/
+    if (role == 0) {
+      if (battery_temp_status == 1) {
+        broadcast_open(&broadcast_data, 129, &broadcast_data_call);
+        uint16_t packet[2];
+        packet[0] = battery_status;
+        packet[1] = temperature;
+        packetbuf_copyfrom(packet, sizeof(packet));
+        broadcast_send(&broadcast_data);
+        broadcast_close(&broadcast_data);  
+        printf("Temperature and battery status broadcast message sent.\n"); 
+      }
     }
 
+
+    if (role == 1 && broadcast_data_open == 0) {     
+        printf("Listening to broadcast data (temperature, battery).\n"); 
+        broadcast_open(&broadcast_data, 129, &broadcast_data_call);
+        broadcast_data_open = 1;
+    }
 
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&round_timer));
     if (init_phase == 1) {
