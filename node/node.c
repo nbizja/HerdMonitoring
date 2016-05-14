@@ -133,7 +133,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 	
 	PROCESS_BEGIN();
 		//Time [ms] for whole round of slots (+1 is for gateway)
-	static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * NUMBER_OF_COWS + 1;
+	static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1);
 
   static struct etimer et;
   static struct etimer round_timer;
