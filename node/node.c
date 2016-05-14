@@ -5,6 +5,7 @@
 #include "net/rime/rime.h"
 #include "net/rime/mesh.h"
 #include "dev/button-sensor.h"
+#include "dev/battery-sensor.h"
 #include "dev/leds.h"
 #include "node-id.h"
 #include <stdio.h>
@@ -29,6 +30,15 @@ static int neighbour_list[NUMBER_OF_COWS];
 static int role = 0;
 static int my_clusters[NUMBER_OF_COWS - 1];
 static int num_of_my_clusters = 0;
+
+float floor(float x)
+{
+  if(x >= 0.0f) {
+    return (float)((int)x);
+  } else {
+    return (float)((int)x - 1);
+  }
+}
 
 static void reset_neighbour_list()
 {
@@ -140,15 +150,41 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   static struct etimer init_broadcast_timer;
   //printf("timer: %d \n", CLOCK_SECOND * PACKET_TIME * 0.00001 * node_id); 
 
+  //Timer for battery and temperature. We send them every 30 seconds.
+  static struct etimer battery_temp_timer;
 
 
 	static int init_phase = 1;
 	static int init_gateway_phase = 1;
 	static int clustering_phase = 1;
 
+  //We use this variable for deciding, if 30 seconds expired (we have to mesaure and send the data.)
+  static int battery_temp_status = 1;
+  static uint16_t battery_status = -1;
+  static uint16_t temperature = -1;
+
+  //Activating battery sensor.
+  SENSORS_ACTIVATE(battery_sensor);
+
 	reset_neighbour_list();
 	while(1) {
 		etimer_set(&round_timer, slot_round_time);
+    etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
+
+    //If 30 seconds expired; we have to set batteryStatus and
+    if (battery_temp_status == 1) {
+      etimer_set(&battery_temp_timer, 30 * CLOCK_SECOND);
+      battery_temp_status = 0;
+    }
+    if(etimer_expired(&battery_temp_timer)) {
+      battery_status = battery_sensor.value(0);
+      float mv = (battery_status * 2.500 * 2) / 4096;
+      temperature = (uint16_t)tmp102_read_temp_raw();
+      battery_temp_status = 1;
+
+      printf("Battery: %i (%ld.%03d mV),   temperature: %d  \n", battery_status, (long)mv,
+       (unsigned)((mv - floor(mv)) * 1000), temperature);
+    }
 
 	  /**********************************************************
 										INITIALIZATION PHASE
@@ -195,9 +231,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 		}
 	}
 	
-
-
-
+  SENSORS_DEACTIVATE(battery_sensor);
   PROCESS_END ();
 }
 
