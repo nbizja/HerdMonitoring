@@ -160,8 +160,18 @@ static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
 static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
-    int * data = (int *)packetbuf_dataptr();
-    printf("Data received from head cow %d :\n", cow_id);
+    
+    int (*data)[2] = (int (*)[2])packetbuf_dataptr();
+
+    int i,j;
+
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      int *row = *(data + i);
+ 
+      printf("%d %d \n",*(row),*(row + 1));
+    }
+      
+    printf("Data received from head cow %d.\n", cow_id);
 
 }
 

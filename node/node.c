@@ -31,8 +31,8 @@ static int role = 0;
 static int my_clusters[NUMBER_OF_COWS - 1];
 static int num_of_my_clusters = 0;
 
-static uint16_t battery_status_list[NUMBER_OF_COWS];
-static uint16_t temperature_list[NUMBER_OF_COWS];
+static int battery_status_list[NUMBER_OF_COWS];
+static int temperature_list[NUMBER_OF_COWS];
 
 float floor(float x)
 {
@@ -142,7 +142,7 @@ static void battery_temp_send_to_gateway(struct unicast_conn *c)
     static linkaddr_t addr;
     addr.u8[0] = 0;
     addr.u8[1] = 0;
-    uint16_t toSend[NUMBER_OF_COWS][2];
+    int toSend[NUMBER_OF_COWS][2];
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++) {
         toSend[i][0] = battery_status_list[i];
@@ -192,7 +192,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   )
   
   PROCESS_BEGIN();
-    //Time [ms] for whole round of slots (+1 is for gateway)
+  //Time [ms] for whole round of slots (+1 is for gateway)
   static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1);
 
   static struct etimer et;
