@@ -8,7 +8,7 @@
   <project EXPORT="discard">[APPS_DIR]/powertracker</project>
   <simulation>
     <title>HerdMonitoring</title>
-    <speedlimit>1.0</speedlimit>
+    <speedlimit>2.0</speedlimit>
     <randomseed>123456</randomseed>
     <motedelay_us>0</motedelay_us>
     <radiomedium>
@@ -173,7 +173,7 @@
   <plugin>
     org.contikios.cooja.plugins.SimControl
     <width>280</width>
-    <z>2</z>
+    <z>0</z>
     <height>160</height>
     <location_x>400</location_x>
     <location_y>0</location_y>
@@ -187,7 +187,7 @@
       <viewport>2.317022297660178 0.0 0.0 2.317022297660178 88.34052362664336 79.70852765790619</viewport>
     </plugin_config>
     <width>400</width>
-    <z>1</z>
+    <z>2</z>
     <height>400</height>
     <location_x>1</location_x>
     <location_y>1</location_y>
@@ -200,7 +200,7 @@
       <coloring />
     </plugin_config>
     <width>1520</width>
-    <z>0</z>
+    <z>1</z>
     <height>240</height>
     <location_x>400</location_x>
     <location_y>160</location_y>
@@ -222,9 +222,9 @@
     </plugin_config>
     <width>1920</width>
     <z>3</z>
-    <height>441</height>
+    <height>589</height>
     <location_x>0</location_x>
-    <location_y>539</location_y>
+    <location_y>391</location_y>
   </plugin>
   <plugin>
     org.contikios.cooja.plugins.Notes

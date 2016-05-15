@@ -31,6 +31,9 @@ static int role = 0;
 static int my_clusters[NUMBER_OF_COWS - 1];
 static int num_of_my_clusters = 0;
 
+static uint16_t battery_status_list[NUMBER_OF_COWS];
+static uint16_t temperature_list[NUMBER_OF_COWS];
+
 float floor(float x)
 {
   if(x >= 0.0f) {
@@ -65,8 +68,15 @@ static void data_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
 {
   if (role == 1) {
       int cow_id = from->u8[0];
+      int * bat_temp = (int *)packetbuf_dataptr();
 
       printf("Battery status and temperature received from cow %d \n", cow_id);
+      
+      battery_status_list[cow_id - 1] = *(bat_temp + 0);
+      temperature_list[cow_id - 1] = *(bat_temp + 1);
+
+      printf("%d %d \n", battery_status_list[cow_id - 1], temperature_list[cow_id - 1]);
+
   }
 
 }
@@ -176,6 +186,13 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   static int battery_temp_status = 1;
   static uint16_t battery_status = -1;
   static uint16_t temperature = -1;
+  static int i;
+  //Initializing tables of data. Head cluster uses this table.
+  for (i = 0; i < NUMBER_OF_COWS; i++)
+  {
+    battery_status_list[i] = -1;
+    temperature_list[i] = -1;
+  } 
 
   static int broadcast_data_open = 0;
 
@@ -251,9 +268,11 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
                     INITIALIZATION FINISHED
     ***********************************************************/
 
+    /**********************************************************
+                    SENDING DATA TO HEAD CLUSTER
+    ***********************************************************/
     /*Waiting until node's time slot is on; 
-      then it checks if it is the time to send the data (battery, temperature).
-    ;*/
+      then it checks if it is the time to send the data (battery, temperature). ;*/
     if (role == 0) {
       if (battery_temp_status == 1) {
         broadcast_open(&broadcast_data, 129, &broadcast_data_call);
@@ -267,7 +286,9 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       }
     }
 
-
+    /**********************************************************
+                    HEAD CLUSTER IS LISTENING
+    ***********************************************************/
     /* Optimization option: listening only, when members of cluster have their time slot.
        Array has to be sorted for that purpose.
        If 2 members are sequential, connection should not close in beetwen.*/
