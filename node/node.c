@@ -137,33 +137,26 @@ static void init_send_to_gateway(struct unicast_conn *c)
     printf("Neighbour list sent to the gateway\n");
 }
 
-static void temperature_send_to_gateway(struct unicast_conn *c, int i, uint16_t temp)
+static void battery_temp_send_to_gateway(struct unicast_conn *c)
 {
     static linkaddr_t addr;
     addr.u8[0] = 0;
     addr.u8[1] = 0;
-    uint16_t toSend[2];
-    toSend[0] = i;
-    toSend[1] = temp;
+    uint16_t toSend[NUMBER_OF_COWS][2];
+    int i;
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+        toSend[i][0] = battery_status_list[i];
+        toSend[i][1] = temperature_list[i];
+        battery_status_list[i] = -1;
+        temperature_list[i] = -1;
+    }
+
     packetbuf_copyfrom(toSend, sizeof(toSend));
     unicast_send(c, &addr);
- 
-    printf("Sending temperature of %d to the gateway\n", i+1); 
+         
+    printf("Sending temperature and battery status data to the gateway.\n"); 
 }
 
-static void battery_status_send_to_gateway(struct unicast_conn *c, int i, uint16_t bat)
-{
-    static linkaddr_t addr;
-    addr.u8[0] = 0;
-    addr.u8[1] = 0;
-    uint16_t toSend[2];
-    toSend[0] = i;
-    toSend[1] = bat;
-    packetbuf_copyfrom(toSend, sizeof(toSend));
-    unicast_send(c, &addr);
- 
-    printf("Sending battery status of %d to the gateway\n", i+1); 
-}
 
 static bool init_timedout = true;
 
@@ -335,19 +328,19 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           HEAD CLUSTER CHECKS FOR DATA TO SEND TO GATEWAY
     ***********************************************************/
     if (role == 1) {
+      int ctr = 0;
       for (i = 0; i < NUMBER_OF_COWS; i++) {
         if (temperature_list[i] != -1) {
-          unicast_open(&uc, 146, &unicast_callbacks_data);
-          temperature_send_to_gateway(&uc, i, temperature_list[i]);
-          unicast_close(&uc);
-          temperature_list[i] = -1;
+          ctr++;
         }
         if (battery_status_list[i] != -1) {
-          unicast_open(&uc, 146, &unicast_callbacks_data);
-          battery_status_send_to_gateway(&uc, i, battery_status_list[i]);
-          unicast_close(&uc);
-          battery_status_list[i] = -1;
+          ctr++;
         }
+      }
+      if (ctr > 1) {
+          unicast_open(&uc, 146, &unicast_callbacks_data);
+          battery_temp_send_to_gateway(&uc);
+          unicast_close(&uc);
       }
     }
 
