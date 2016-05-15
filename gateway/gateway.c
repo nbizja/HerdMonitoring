@@ -13,7 +13,8 @@
 PROCESS (herd_monitor_gateway, "Herd monitor - gateway");
 AUTOSTART_PROCESSES (&herd_monitor_gateway);
 
-    
+static int battery_status_list[NUMBER_OF_COWS];
+static int temperature_list[NUMBER_OF_COWS];
 
 static int RSSIarray[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
@@ -167,11 +168,14 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
 
     for (i = 0; i < NUMBER_OF_COWS; i++) {
       int *row = *(data + i);
- 
-      printf("%d %d \n",*(row),*(row + 1));
+      battery_status_list[i] = *row;
+      temperature_list[i] = *(row + 1);
     }
       
     printf("Data received from head cow %d.\n", cow_id);
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      printf("%d %d \n", battery_status_list[i], temperature_list[i]);
+    }
 
 }
 

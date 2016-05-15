@@ -137,7 +137,7 @@ static void init_send_to_gateway(struct unicast_conn *c)
     printf("Neighbour list sent to the gateway\n");
 }
 
-static void battery_temp_send_to_gateway(struct unicast_conn *c)
+static void battery_temp_send_to_gateway(struct unicast_conn *c, uint16_t b, uint16_t t)
 {
     static linkaddr_t addr;
     addr.u8[0] = 0;
@@ -150,6 +150,9 @@ static void battery_temp_send_to_gateway(struct unicast_conn *c)
         battery_status_list[i] = -1;
         temperature_list[i] = -1;
     }
+    //We also have to send head's data.
+    toSend[node_id - 1][0] = b;
+    toSend[node_id - 1][1] = t;
 
     packetbuf_copyfrom(toSend, sizeof(toSend));
     unicast_send(c, &addr);
@@ -339,7 +342,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       }
       if (ctr > 1) {
           unicast_open(&uc, 146, &unicast_callbacks_data);
-          battery_temp_send_to_gateway(&uc);
+          battery_temp_send_to_gateway(&uc, battery_status, temperature);
           unicast_close(&uc);
       }
     }
