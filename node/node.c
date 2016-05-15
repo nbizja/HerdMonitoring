@@ -75,7 +75,7 @@ static void data_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
       battery_status_list[cow_id - 1] = *(bat_temp + 0);
       temperature_list[cow_id - 1] = *(bat_temp + 1);
 
-      printf("%d %d \n", battery_status_list[cow_id - 1], temperature_list[cow_id - 1]);
+      printf("RECEIVED DATA: %d %d \n", battery_status_list[cow_id - 1], temperature_list[cow_id - 1]);
 
   }
 
@@ -137,6 +137,34 @@ static void init_send_to_gateway(struct unicast_conn *c)
     printf("Neighbour list sent to the gateway\n");
 }
 
+static void temperature_send_to_gateway(struct unicast_conn *c, int i, uint16_t temp)
+{
+    static linkaddr_t addr;
+    addr.u8[0] = 0;
+    addr.u8[1] = 0;
+    uint16_t toSend[2];
+    toSend[0] = i;
+    toSend[1] = temp;
+    packetbuf_copyfrom(toSend, sizeof(toSend));
+    unicast_send(c, &addr);
+ 
+    printf("Sending temperature of %d to the gateway\n", i+1); 
+}
+
+static void battery_status_send_to_gateway(struct unicast_conn *c, int i, uint16_t bat)
+{
+    static linkaddr_t addr;
+    addr.u8[0] = 0;
+    addr.u8[1] = 0;
+    uint16_t toSend[2];
+    toSend[0] = i;
+    toSend[1] = bat;
+    packetbuf_copyfrom(toSend, sizeof(toSend));
+    unicast_send(c, &addr);
+ 
+    printf("Sending battery status of %d to the gateway\n", i+1); 
+}
+
 static bool init_timedout = true;
 
 static void init_ack_received()
@@ -144,6 +172,10 @@ static void init_ack_received()
   init_timedout = false;  
 }
 
+static void data_ack_received()
+{
+ 
+}
 
 static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
 static const struct broadcast_callbacks broadcast_data_call = {data_broadcast_recv};
@@ -154,6 +186,7 @@ static struct broadcast_conn broadcast_data;
 
 
 static const struct unicast_callbacks unicast_callbacks = {init_ack_received};
+static const struct unicast_callbacks unicast_callbacks_data = {data_ack_received};
 static struct unicast_conn uc;
 
 PROCESS_THREAD (herd_monitor_node, ev, data)
@@ -297,6 +330,27 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
         broadcast_open(&broadcast_data, 129, &broadcast_data_call);
         broadcast_data_open = 1;
     }
+
+    /**********************************************************
+          HEAD CLUSTER CHECKS FOR DATA TO SEND TO GATEWAY
+    ***********************************************************/
+    if (role == 1) {
+      for (i = 0; i < NUMBER_OF_COWS; i++) {
+        if (temperature_list[i] != -1) {
+          unicast_open(&uc, 146, &unicast_callbacks_data);
+          temperature_send_to_gateway(&uc, i, temperature_list[i]);
+          unicast_close(&uc);
+          temperature_list[i] = -1;
+        }
+        if (battery_status_list[i] != -1) {
+          unicast_open(&uc, 146, &unicast_callbacks_data);
+          battery_status_send_to_gateway(&uc, i, battery_status_list[i]);
+          unicast_close(&uc);
+          battery_status_list[i] = -1;
+        }
+      }
+    }
+
 
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&round_timer));
     if (init_phase == 1) {

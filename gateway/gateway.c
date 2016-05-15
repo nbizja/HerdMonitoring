@@ -156,12 +156,22 @@ static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
     unicast_send(c, from);
 }
 
+/*Gateway receives temperature and battery status data from heads of clusters.*/
+static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
+{
+    int cow_id = from->u8[0];
+    int * data = (int *)packetbuf_dataptr();
+    printf("Data received from head cow %d :\n", cow_id);
+
+}
+
 static void init_broadcast_recv()
 {
 
 }
 
 static const struct unicast_callbacks unicast_callbacks = {init_power_received};
+static const struct unicast_callbacks unicast_callbacks_data = {init_data_received};
 static struct unicast_conn uc;
 
 static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
@@ -200,6 +210,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     compute_clusters(RSSIarray, &broadcast);
     broadcast_close(&broadcast);
 
+    unicast_open(&uc, 146, &unicast_callbacks_data);
     
   PROCESS_END ();
 }       
