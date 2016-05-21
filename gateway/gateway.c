@@ -133,9 +133,9 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
         printf("\n");
     } */
 
-
     packetbuf_copyfrom(clusters, sizeof(clusters));
     broadcast_send(conn);
+    printf("Clusters sent  \n");
 }
 
 static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
@@ -225,6 +225,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     broadcast_close(&broadcast);
 
     unicast_open(&uc, 146, &unicast_callbacks_data);
+
     
   PROCESS_END ();
 }       

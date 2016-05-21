@@ -25,7 +25,10 @@ AUTOSTART_PROCESSES (&herd_monitor_node);
 
 
 static int neighbour_list[NUMBER_OF_COWS];
+static int cluster_head_neighbour_data[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
+// 1 = init_phase, 2 = init_gateway_phase, 3 = clustering phase, 4 = normal mode, 5 = panic
+static int mode_of_operation = 1;
 //0 -> node; 1 -> cluster head;
 static int role = 0;
 static int my_clusters[NUMBER_OF_COWS - 1];
@@ -33,6 +36,11 @@ static int num_of_my_clusters = 0;
 
 static int battery_status_list[NUMBER_OF_COWS];
 static int temperature_list[NUMBER_OF_COWS];
+
+// 1 = standing, 2 = moving slowly, 3 = running 
+static int motion_status = 0;
+
+static int cluster_head_sends_only_rssi = 0;
 
 //Every five rounds we listen for whole interval so we can gather RSSI from neighbours
 static int rssi_round_counter = 0;
@@ -86,6 +94,17 @@ static void data_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
 
 }
 
+static void neighour_data_recv(struct broadcast_conn *c, const linkaddr_t *from)
+{
+    printf("RSSI data received received!\n");
+
+    int *neighbour_data = (int *)packetbuf_dataptr();
+    int i;
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      cluster_head_neighbour_data[from->u8[0]][i] = *(neighbour_data + i);      
+    }
+}
+
 static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
     printf("Clustering results received!\n");
@@ -128,6 +147,7 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
 
     }
     broadcast_close(c);
+    mode_of_operation = 4;
     
 }
 
@@ -165,6 +185,15 @@ static void battery_temp_send_to_gateway(struct unicast_conn *c, uint16_t b, uin
     printf("Sending temperature and battery status data to the gateway.\n"); 
 }
 
+static void rssi_neighbours_send_to_gateway(struct unicast_conn *c)
+{
+    static linkaddr_t addr;
+    addr.u8[0] = 0;
+    addr.u8[1] = 0;
+    packetbuf_copyfrom(cluster_head_neighbour_data, sizeof(cluster_head_neighbour_data));
+    unicast_send(c, &addr);
+}
+
 
 static bool init_timedout = true;
 
@@ -183,14 +212,15 @@ static void open_broadcast(struct broadcast_callbacks *cl)
   if (is_broadcast_open == 0) {
     is_broadcast_open = 1;
     broadcast_open(&broadcast, 129, cl);
+    printf("Broadcast is open... \n");    
   }
 }
 static void close_broadcast()
 {
-    if (rssi_round_counter < 5) {
-       broadcast_close(&broadcast);
-       is_broadcast_open = 0;
-    }
+   broadcast_close(&broadcast);
+   is_broadcast_open = 0;
+   printf("Broadcast closed... \n");    
+
 }
 
 static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
@@ -221,8 +251,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   static struct etimer battery_temp_timer;
 
   static int init_phase = 1;
-  static int init_gateway_phase = 1;
-  static int clustering_phase = 1;
+
+
 
   //We use this variable for deciding, if 30 seconds expired (we have to mesaure and send the data.)
   static int battery_temp_status = 1;
@@ -247,30 +277,34 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 
     //If 30 seconds expired; we have to set batteryStatus and
-    if (battery_temp_status == 1) {
+    if (battery_temp_status == 1 && mode_of_operation == 4) {
       etimer_set(&battery_temp_timer, 30 * CLOCK_SECOND);
       battery_temp_status = 0;
     }
 
     //Every 5 intervals we listen for whole interval
-    if (rssi_round_counter == 5) {
+    if (rssi_round_counter == 5 && mode_of_operation == 4) {
       rssi_round_counter = 0;
       open_broadcast(&broadcast_clustering_call);
     }
 
-
-
+    /**********************************************************
+                    MOTION SENSING
+    ***********************************************************/
+    if (rssi_round_counter == 5) {
+      motion_status = node_id % 3;
+    }
     /**********************************************************
                     BATTERY AND TEMPERATURE
     ***********************************************************/
-    if (etimer_expired(&battery_temp_timer)) {
+    if (etimer_expired(&battery_temp_timer) && mode_of_operation == 4) {
       //Activating battery sensor.
       SENSORS_ACTIVATE(battery_sensor);
       battery_status = battery_sensor.value(0);
 
 
       float mv = (battery_status * 2.500 * 2) / 4096;
-      temperature = (uint16_t)tmp102_read_temp_raw();
+      temperature = (int)tmp102_read_temp_raw();
       battery_temp_status = 1;
 
       printf("Battery: %i (%ld.%03d mV),   temperature: %d  \n", battery_status, (long)mv,
@@ -278,14 +312,9 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
       SENSORS_DEACTIVATE(battery_sensor);
     }
-
-    if (init_phase == 1) {
+    //Init phase
+    if (mode_of_operation == 1) {
       open_broadcast(&broadcast_call);
-    } else if (clustering_phase == 1) {
-        //LISTENING FOR CLUSTERING RESULTS FROM GATEWAY
-        printf("Listening for clustering results...\n");    
-        open_broadcast(&broadcast_clustering_call);  
-        clustering_phase = 0;
     }
 
     /***********************************************************
@@ -297,7 +326,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     /**********************************************************
                     INITIALIZATION PHASE
     ***********************************************************/
-    if (init_phase == 1) {
+    if (mode_of_operation == 1) {
 
       printf("Waiting for my slot...\n"); 
 
@@ -306,14 +335,18 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       broadcast_send(&broadcast);
       printf("broadcast message sent\n"); 
     
-    } else if (init_gateway_phase == 1) {
+    } else if (mode_of_operation == 2) {
       printf("Sending data to the gateway\n"); 
 
       unicast_open(&uc, 146, &unicast_callbacks);
      
       init_send_to_gateway(&uc);
       unicast_close(&uc);
-      init_gateway_phase = 0;
+      
+      //LISTENING FOR CLUSTERING RESULTS FROM GATEWAY
+      printf("Listening for clustering results...\n");    
+      open_broadcast(&broadcast_clustering_call);
+      mode_of_operation = 0;
     }
 
     /**********************************************************
@@ -325,17 +358,25 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     ***********************************************************/
     /*Waiting until node's time slot is on; 
       then it checks if it is the time to send the data (battery, temperature). ;*/
-    if (role == 0) {
-      if (battery_temp_status == 1) {
-        open_broadcast(&broadcast_data_call);
-        int packet[2];
-        packet[0] = battery_status;
-        packet[1] = temperature;
-        packetbuf_copyfrom(packet, sizeof(packet));
-        broadcast_send(&broadcast);
-        close_broadcast(); 
-        printf("Temperature and battery status broadcast message sent.\n"); 
+    if (role == 0 && mode_of_operation == 4) {
+      // Fixed packet size. packet[0] = battery, packet[1] = temp status, 
+      // packet[2] = motion status, packet[3: 3+NUMBER_OF_COWS] = RSSI of neighbours 
+      int packet[NUMBER_OF_COWS + 3];
+
+      packet[0] = battery_status;
+      packet[1] = temperature;
+      packet[2] = motion_status;
+
+      int ri;
+      for (ri = 3; ri < NUMBER_OF_COWS + 3; ri++) {
+         packet[ri] = neighbour_list[ri - 3];
       }
+
+      open_broadcast(&broadcast_data_call);
+      packetbuf_copyfrom(packet, sizeof(packet));
+      broadcast_send(&broadcast);
+      printf("Normal mode - broadcast message sent.\n"); 
+      close_broadcast(); 
     }
 
     /**********************************************************
@@ -344,16 +385,18 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     /* Optimization option: listening only, when members of cluster have their time slot.
        Array has to be sorted for that purpose.
        If 2 members are sequential, connection should not close in beetwen.*/
-    if (role == 1 && broadcast_data_open == 0) {     
+    if (role == 1 && mode_of_operation == 4) {     
         printf("Listening to broadcast data (temperature, battery).\n"); 
         open_broadcast(&broadcast_data_call);
-        broadcast_data_open = 1;
     }
 
     /**********************************************************
           HEAD CLUSTER CHECKS FOR DATA TO SEND TO GATEWAY
     ***********************************************************/
-    if (role == 1) {
+    if (role == 1 && mode_of_operation == 4) {
+      if (rssi_round_counter == 5) {
+        cluster_head_sends_only_rssi = 1;
+      }
       int ctr = 0;
       for (i = 0; i < NUMBER_OF_COWS; i++) {
         if (temperature_list[i] != -1) {
@@ -363,21 +406,31 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           ctr++;
         }
       }
-      if (ctr > 1) {
-          unicast_open(&uc, 146, &unicast_callbacks_data);
+
+      unicast_open(&uc, 146, &unicast_callbacks_data);
+      if (cluster_head_sends_only_rssi == 1 && rssi_round_counter == 0) {
+          cluster_head_sends_only_rssi = 0;
+          rssi_neighbours_send_to_gateway(&uc);
+      } else if (ctr > 0) {
           battery_temp_send_to_gateway(&uc, battery_status, temperature);
-          unicast_close(&uc);
       }
+      unicast_close(&uc);
+
     }
 
 
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&round_timer));
-    if (init_phase == 1) {
-      printf("Closing broadcast\n");
-
+    if (mode_of_operation == 1) {
       close_broadcast(); 
-      init_phase = 0;
+      mode_of_operation++;
+    } else if (mode_of_operation == 4) {
+      if (rssi_round_counter == 5) {
+        rssi_round_counter = 0;
+      } else {
+        rssi_round_counter++;
+      }
     }
+
   }
   
   PROCESS_END ();
