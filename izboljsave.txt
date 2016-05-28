@@ -1,0 +1,3 @@
+--> Centralizirani time sloti.
+--> Posiljanje vseh podatkov naenkrat (number_of_cows*(number_of_cows+2))
+-->
