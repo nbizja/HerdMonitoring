@@ -121,7 +121,7 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
     //Number of successfully
     int ack_number = *(ack_pointer + node_id - 1);
     printf("Ack received: %d \n", ack_number);
-    printf("Current txpower: %d\n", cc2420_get_txpower());
+    //printf("Current txpower: %d\n", cc2420_get_txpower());
     if (ack_number < 5) { //If some packet was not received successfully, then increase power.
       printf("Increasing tx power.\n");
       increase_txpower();
@@ -218,16 +218,21 @@ static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struc
     addr.u8[1] = 0;
     int toSend[NUMBER_OF_COWS][NUMBER_OF_COWS + 2];
     int i;
+    printf("Sending data: \n");
     for (i = 0; i < NUMBER_OF_COWS; i++) {
         toSend[i][0] = cluster_head_battery_data[i];
         toSend[i][1] = cluster_head_temperature_data[i];
         cluster_head_battery_data[i] = -1;
         cluster_head_temperature_data[i] = -1;
+        printf("[%d] Bat: %d; Temp: %d, RSSI: ", i, toSend[i][0], toSend[i][1]);
         int j;
         for(j = 0; j < NUMBER_OF_COWS; j++) {
+          printf("%d, ", cluster_head_rssi_data[i][j]);
           toSend[i][j + 2] = cluster_head_rssi_data[i][j];
           cluster_head_rssi_data[i][j] = 0;
         }
+        printf("\n");
+
     }
     //We also have to send head's data.
     //toSend[node_id - 1][0] = b;
@@ -322,23 +327,9 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
   static int init_phase = 1;
 
-
-
-  //We use this variable for deciding, if 30 seconds expired (we have to mesaure and send the data.)
   static int battery_temp_status = 1;
   static int battery_status = -1;
   static int temperature = -1;
-  static int i;
-
-
-
-  //Initializing tables of data. Head cluster uses this table.
-  for (i = 0; i < NUMBER_OF_COWS; i++)
-  {
-    cluster_head_battery_data[i] = -1;
-    cluster_head_temperature_data[i] = -1;
-  } 
-
   static int broadcast_data_open = 0;
 
   reset_neighbour_list();
