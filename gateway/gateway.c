@@ -157,12 +157,30 @@ static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
     unicast_send(c, from);
 }
 
+static void checkForMissingData(int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS])
+{
+  int i,j;
+  int check[NUMBER_OF_COWS];
+  for (i = 0; i < NUMBER_OF_COWS; i++) {
+    check[i] = 0;
+    for (j = 0; j < NUMBER_OF_COWS; j++) {
+      if (RSSIs[i][j] < 0) {
+        check[i] = 1;
+        break;
+      }
+    }
+    printf("%d ", check[i]);
+  }
+  printf("\n");
+}
+
 /*Gateway receives temperature and battery status data from heads of clusters.*/
 static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
     
-    int (*data)[2] = (int (*)[2])packetbuf_dataptr();
+    int (*data)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
+    int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
     int i,j;
 
@@ -171,11 +189,14 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
       battery_status_list[i] = *row;
       temperature_list[i] = *(row + 1);
     }
-      
-    printf("Data received from head cow %d.\n", cow_id);
-    for (i = 0; i < NUMBER_OF_COWS; i++) {
-      printf("%d %d \n", battery_status_list[i], temperature_list[i]);
-    }
+     
+    if (battery_status_list[0] >= 0) {
+      printf("Data received from head cow %d.\n", cow_id);
+      for (i = 0; i < NUMBER_OF_COWS; i++) {
+        printf("%d %d \n", battery_status_list[i], temperature_list[i]);
+      }
+    }  
+
 
 }
 
@@ -193,6 +214,11 @@ static struct broadcast_conn broadcast;
 
 PROCESS_THREAD (herd_monitor_gateway, ev, data)
 {
+
+    int RSSIs[5][5] = {{0,-9,0,0,0},{0,0,0,0,0}, {-1,0,-2,-3,-4},{-3,0,-2,0,-1},{0,0,0,0,0}};
+    checkForMissingData(RSSIs);
+
+
     PROCESS_EXITHANDLER(
         unicast_close(&uc);
         broadcast_close(&broadcast);
