@@ -38,7 +38,6 @@ static int TXPOWER[9] = {0x03, 0x2C, 0x88, 0x81, 0x32, 0x13, 0xAB, 0xF7};
 static int power_index = 5; //Default tx power is 1dBm
 
 static int neighbour_list[NUMBER_OF_COWS];
-static int cluster_head_neighbour_data[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
 // 1 = init_phase, 2 = init_gateway_phase, 3 = clustering phase, 4 = normal mode, 5 = panic
 static int mode_of_operation = 1;
@@ -47,8 +46,10 @@ static int role = 0;
 static int my_clusters[NUMBER_OF_COWS - 1];
 static int num_of_my_clusters = 0;
 
-static int battery_status_list[NUMBER_OF_COWS];
-static int temperature_list[NUMBER_OF_COWS];
+//Cluster head saves received data from nodes in these arrays
+static int cluster_head_rssi_data[NUMBER_OF_COWS][NUMBER_OF_COWS];
+static int cluster_head_battery_data[NUMBER_OF_COWS];
+static int cluster_head_temperature_data[NUMBER_OF_COWS];
 
 // 1 = standing, 2 = moving slowly, 3 = running 
 static int motion_status = 0;
@@ -90,17 +91,25 @@ static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
          cow_id, rssi);
 }
 
+//Cluster head receiving data from nodes
 static void data_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
-    printf("Battery status and temperature received from cow %d \n", cow_id);
+    printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
 
     int * bat_temp = (int *)packetbuf_dataptr();
 
-    battery_status_list[cow_id - 1] = *(bat_temp + 0);
-    temperature_list[cow_id - 1] = *(bat_temp + 1);
-
-    printf("RECEIVED DATA: %d %d \n", battery_status_list[cow_id - 1], temperature_list[cow_id - 1]);
+    cluster_head_battery_data[cow_id - 1] = *(bat_temp + 0);
+    cluster_head_temperature_data[cow_id - 1] = *(bat_temp + 1);
+    printf("CLUSTER HEAD RECEIVED DATA: %d, %d", 
+      cluster_head_battery_data[cow_id - 1], 
+      cluster_head_temperature_data[cow_id - 1]);
+    int i;
+    for (i = 2; i < NUMBER_OF_COWS + 2; i++) {
+      printf(", %d", *(bat_temp + i));
+      cluster_head_rssi_data[cow_id - 1][i - 2] = *(bat_temp + i);
+    }
+    printf("\n");
 }
 
 static void neighour_data_recv(struct broadcast_conn *c, const linkaddr_t *from)
@@ -110,7 +119,7 @@ static void neighour_data_recv(struct broadcast_conn *c, const linkaddr_t *from)
     int *neighbour_data = (int *)packetbuf_dataptr();
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++) {
-      cluster_head_neighbour_data[from->u8[0]][i] = *(neighbour_data + i);      
+      cluster_head_rssi_data[from->u8[0]][i] = *(neighbour_data + i);      
     }
 }
 
@@ -171,27 +180,32 @@ static void init_send_to_gateway(struct unicast_conn *c)
     printf("Neighbour list sent to the gateway\n");
 }
 
-static void battery_temp_send_to_gateway(struct unicast_conn *c, uint16_t b, uint16_t t)
+static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c)
 {
     static linkaddr_t addr;
     addr.u8[0] = 0;
     addr.u8[1] = 0;
-    int toSend[NUMBER_OF_COWS][2];
+    int toSend[NUMBER_OF_COWS][NUMBER_OF_COWS + 2];
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++) {
-        toSend[i][0] = battery_status_list[i];
-        toSend[i][1] = temperature_list[i];
-        battery_status_list[i] = -1;
-        temperature_list[i] = -1;
+        toSend[i][0] = cluster_head_battery_data[i];
+        toSend[i][1] = cluster_head_temperature_data[i];
+        cluster_head_battery_data[i] = -1;
+        cluster_head_temperature_data[i] = -1;
+        int j;
+        for(j = 0; j < NUMBER_OF_COWS; j++) {
+          toSend[i][j + 2] = cluster_head_rssi_data[i][j];
+          cluster_head_rssi_data[i][j] = 0;
+        }
     }
     //We also have to send head's data.
-    toSend[node_id - 1][0] = b;
-    toSend[node_id - 1][1] = t;
+    //toSend[node_id - 1][0] = b;
+    //toSend[node_id - 1][1] = t;
 
     packetbuf_copyfrom(toSend, sizeof(toSend));
     unicast_send(c, &addr);
          
-    printf("Sending temperature and battery status data to the gateway.\n"); 
+    printf("Cluster head sending temperature, battery and rssi data to the gateway.\n"); 
 }
 
 static void rssi_neighbours_send_to_gateway(struct unicast_conn *c)
@@ -199,7 +213,7 @@ static void rssi_neighbours_send_to_gateway(struct unicast_conn *c)
     static linkaddr_t addr;
     addr.u8[0] = 0;
     addr.u8[1] = 0;
-    packetbuf_copyfrom(cluster_head_neighbour_data, sizeof(cluster_head_neighbour_data));
+    packetbuf_copyfrom(cluster_head_rssi_data, sizeof(cluster_head_rssi_data));
     unicast_send(c, &addr);
 }
 
@@ -219,7 +233,7 @@ static void data_ack_received()
 static void increase_txpower()
 {
     if (power_index < 8) {
-      power_index++;
+      power_index += 2;
       set_txpower(TXPOWER[power_index]);
     }
 }
@@ -297,8 +311,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   //Initializing tables of data. Head cluster uses this table.
   for (i = 0; i < NUMBER_OF_COWS; i++)
   {
-    battery_status_list[i] = -1;
-    temperature_list[i] = -1;
+    cluster_head_battery_data[i] = -1;
+    cluster_head_temperature_data[i] = -1;
   } 
 
   static int broadcast_data_open = 0;
@@ -432,10 +446,10 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       }
       int ctr = 0;
       for (i = 0; i < NUMBER_OF_COWS; i++) {
-        if (temperature_list[i] != -1) {
+        if (cluster_head_temperature_data[i] != -1) {
           ctr++;
         }
-        if (battery_status_list[i] != -1) {
+        if (cluster_head_battery_data[i] != -1) {
           ctr++;
         }
       }
@@ -443,12 +457,9 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       printf("Unicast - Sending data to the gateway.\n"); 
 
       unicast_open(&uc, 146, &unicast_callbacks_data);
-      if (cluster_head_sends_only_rssi == 1 && rssi_round_counter == 0) {
-          cluster_head_sends_only_rssi = 0;
-          rssi_neighbours_send_to_gateway(&uc);
-      } else if (ctr > 0) {
-          battery_temp_send_to_gateway(&uc, battery_status, temperature);
-      }
+
+      cluster_head_sends_all_data_to_gateway(&uc);
+      
       //We close the connection to the gateway and start listening again for
       //broadcasts of nodes.
       unicast_close(&uc);
