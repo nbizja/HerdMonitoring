@@ -79,19 +79,15 @@ static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from
 
 static void data_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
-  if (role == 1) {
-      int cow_id = from->u8[0];
-      int * bat_temp = (int *)packetbuf_dataptr();
+    int cow_id = from->u8[0];
+    printf("Battery status and temperature received from cow %d \n", cow_id);
 
-      printf("Battery status and temperature received from cow %d \n", cow_id);
-      
-      battery_status_list[cow_id - 1] = *(bat_temp + 0);
-      temperature_list[cow_id - 1] = *(bat_temp + 1);
+    int * bat_temp = (int *)packetbuf_dataptr();
 
-      printf("RECEIVED DATA: %d %d \n", battery_status_list[cow_id - 1], temperature_list[cow_id - 1]);
+    battery_status_list[cow_id - 1] = *(bat_temp + 0);
+    temperature_list[cow_id - 1] = *(bat_temp + 1);
 
-  }
-
+    printf("RECEIVED DATA: %d %d \n", battery_status_list[cow_id - 1], temperature_list[cow_id - 1]);
 }
 
 static void neighour_data_recv(struct broadcast_conn *c, const linkaddr_t *from)
@@ -217,15 +213,22 @@ static void open_broadcast(struct broadcast_callbacks *cl)
 }
 static void close_broadcast()
 {
-   broadcast_close(&broadcast);
-   is_broadcast_open = 0;
-   printf("Broadcast closed... \n");    
+     broadcast_close(&broadcast);
+     is_broadcast_open = 0;
+     printf("Broadcast closed... \n");
+    
+}
+
+static void normal_mode_rssi_call() 
+{
+    printf("Broadcast is open... \n");    
 
 }
 
 static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
 static const struct broadcast_callbacks broadcast_data_call = {data_broadcast_recv};
 static const struct broadcast_callbacks broadcast_clustering_call = {clustering_broadcast_recv};
+
 
 static const struct unicast_callbacks unicast_callbacks = {init_ack_received};
 static const struct unicast_callbacks unicast_callbacks_data = {data_ack_received};
@@ -284,8 +287,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
     //Every 5 intervals we listen for whole interval
     if (rssi_round_counter == 5 && mode_of_operation == 4) {
-      rssi_round_counter = 0;
-      open_broadcast(&broadcast_clustering_call);
+      open_broadcast(&broadcast_call);
     }
 
     /**********************************************************
@@ -375,7 +377,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       open_broadcast(&broadcast_data_call);
       packetbuf_copyfrom(packet, sizeof(packet));
       broadcast_send(&broadcast);
-      printf("Normal mode - broadcast message sent.\n"); 
+      printf("Normal mode - broadcast message sent.\n");
+
       close_broadcast(); 
     }
 
@@ -406,6 +409,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           ctr++;
         }
       }
+      close_broadcast();
+      printf("Unicast - Sending data to the gateway.\n"); 
 
       unicast_open(&uc, 146, &unicast_callbacks_data);
       if (cluster_head_sends_only_rssi == 1 && rssi_round_counter == 0) {
@@ -415,7 +420,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           battery_temp_send_to_gateway(&uc, battery_status, temperature);
       }
       unicast_close(&uc);
-
+      open_broadcast(&broadcast_data_call);
     }
 
 
