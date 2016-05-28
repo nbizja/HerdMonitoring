@@ -17,12 +17,25 @@
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
 #define NUMBER_OF_COWS 5 //Number of cows
-#define NUMBER_OF_INIT_BROADCASTS 3 //Each node sends 3 broadcasts in the initialization phase
 #define PACKET_TIME 0.15
 
 PROCESS (herd_monitor_node, "Herd monitor - node");
 AUTOSTART_PROCESSES (&herd_monitor_node);
 
+  /*
+  values of TXPOWER
+  0x03 -> -18 dBm
+  0x2C -> -7 dBm
+  0x88 -> -4 dBm
+  0x81 -> -2 dBm
+  0x32 -> 0 dBm
+  0x13 -> 1 dBm
+  0xAB -> 2 dBm
+  0xF2 -> 3 dBm
+  0xF7 -> 5 dBm
+*/
+static int TXPOWER[9] = {0x03, 0x2C, 0x88, 0x81, 0x32, 0x13, 0xAB, 0xF7}; 
+static int power_index = 5; //Default tx power is 1dBm
 
 static int neighbour_list[NUMBER_OF_COWS];
 static int cluster_head_neighbour_data[NUMBER_OF_COWS][NUMBER_OF_COWS];
@@ -203,6 +216,22 @@ static void data_ack_received()
 
 }
 
+static void increase_txpower()
+{
+    if (power_index < 8) {
+      power_index++;
+      set_txpower(TXPOWER[power_index]);
+    }
+}
+
+static void decrease_txpower()
+{
+    if (power_index > 0) {
+      power_index--;
+      set_txpower(TXPOWER[power_index]);
+    }
+}
+
 static void open_broadcast(struct broadcast_callbacks *cl)
 {
   if (is_broadcast_open == 0) {
@@ -377,7 +406,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       open_broadcast(&broadcast_data_call);
       packetbuf_copyfrom(packet, sizeof(packet));
       broadcast_send(&broadcast);
-      printf("Normal mode - broadcast message sent.\n");
+      printf("Normal mode - broadcast message sent. %d, %d, %d \n",
+       battery_status, temperature, motion_status);
 
       close_broadcast(); 
     }
@@ -419,6 +449,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       } else if (ctr > 0) {
           battery_temp_send_to_gateway(&uc, battery_status, temperature);
       }
+      //We close the connection to the gateway and start listening again for
+      //broadcasts of nodes.
       unicast_close(&uc);
       open_broadcast(&broadcast_data_call);
     }
