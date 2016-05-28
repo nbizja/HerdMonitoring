@@ -2,6 +2,7 @@
 #include "dev/i2cmaster.h"  // Include IC driver
 #include "dev/tmp102.h"     // Include sensor driver
 #include "dev/cc2420/cc2420.h"
+#include "dev/cc2520/cc2520.h"
 #include "net/rime/rime.h"
 #include "net/rime/mesh.h"
 #include "dev/button-sensor.h"
@@ -34,8 +35,8 @@ AUTOSTART_PROCESSES (&herd_monitor_node);
   0xF2 -> 3 dBm
   0xF7 -> 5 dBm
 */
-static int TXPOWER[9] = {0x03, 0x2C, 0x88, 0x81, 0x32, 0x13, 0xAB, 0xF7}; 
-static int power_index = 5; //Default tx power is 1dBm
+static int TXPOWER[9] = {3, 7, 11, 15, 19, 23, 27, 31}; 
+static int power_index = 7; //Default and max tx power is 0dBm
 
 static int neighbour_list[NUMBER_OF_COWS];
 
@@ -89,15 +90,49 @@ static void reset_neighbour_list()
   }
 }
 
+static void increase_txpower()
+{
+    power_index += 2;
+    if (power_index > 7) {
+      power_index = 7;
+    }
+    cc2420_set_txpower(TXPOWER[power_index]);
+}
 
-static void init_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
+static void decrease_txpower()
+{
+    if (--power_index < 0) {
+      power_index = 0;
+    }
+    cc2420_set_txpower(TXPOWER[power_index]);
+}
+
+//This function serves two purposes. It measures rssi from neighbours and
+//it accepts acknowledgment from cluster head.
+//This happens every 5th round.
+static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, const linkaddr_t *from)
 {
   int cow_id = from->u8[0];
   int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
   neighbour_list[cow_id - 1] = rssi;
-
-  printf("broadcast message received from cow %d with rssi %d \n",
-         cow_id, rssi);
+  printf("rssi_round_counter: %d \n", rssi_round_counter);
+  if (rssi_round_counter == 5) {
+    int * ack_pointer = (int *)packetbuf_dataptr();
+    //Number of successfully
+    int ack_number = *(ack_pointer + node_id - 1);
+    printf("Ack received: %d \n", ack_number);
+    printf("Current txpower: %d\n", cc2420_get_txpower());
+    if (ack_number < 5) { //If some packet was not received successfully, then increase power.
+      printf("Increasing tx power.\n");
+      increase_txpower();
+    } else {
+      printf("Decreasing tx power.\n");
+      decrease_txpower();
+    }
+  } else {
+    printf("broadcast message received from cow %d with rssi %d \n",
+      cow_id, rssi);
+  }
 }
 
 //Cluster head receiving data from nodes
@@ -160,24 +195,9 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
           printf("\n");   
           break;
       }
-      
-      /*for (j = 1; j < NUMBER_OF_COWS; j++) {
-        int node = *(cluster + j) + 1;
-        if (node == 0 ) {
-          break;
-        }
-        if (node == node_id) { //We save cluster heads of my clusters.
-          my_clusters[k] = cluster_head;
-          printf("cluster %d \n",cluster_head);
-          k++;
-          break;
-        }
-      }*/
-
     }
     broadcast_close(c);
     mode_of_operation = 4;
-    
 }
 
 static void init_send_to_gateway(struct unicast_conn *c)
@@ -223,6 +243,12 @@ static void cluster_head_sends_acknowledgments()
 {
     packetbuf_copyfrom(cluster_head_ack_data, sizeof(cluster_head_ack_data));
     broadcast_send(&broadcast);
+    //We reset the acknowledgments
+    int i;
+    for (i = 0; i < NUMBER_OF_COWS; i++)
+    {
+      cluster_head_ack_data[i] = 0;
+    }
 }
 
 static void rssi_neighbours_send_to_gateway(struct unicast_conn *c)
@@ -247,36 +273,17 @@ static void data_ack_received()
 
 }
 
-static void increase_txpower()
-{
-    if (power_index < 8) {
-      power_index += 2;
-      set_txpower(TXPOWER[power_index]);
-    }
-}
-
-static void decrease_txpower()
-{
-    if (power_index > 0) {
-      power_index--;
-      set_txpower(TXPOWER[power_index]);
-    }
-}
-
 static void open_broadcast(struct broadcast_callbacks *cl)
 {
   if (is_broadcast_open == 0) {
     is_broadcast_open = 1;
     broadcast_open(&broadcast, 129, cl);
-    printf("Broadcast is open... \n");    
   }
 }
 static void close_broadcast()
 {
-     broadcast_close(&broadcast);
-     is_broadcast_open = 0;
-     printf("Broadcast closed... \n");
-    
+  broadcast_close(&broadcast);
+  is_broadcast_open = 0;
 }
 
 static void normal_mode_rssi_call() 
@@ -285,7 +292,7 @@ static void normal_mode_rssi_call()
 
 }
 
-static const struct broadcast_callbacks broadcast_call = {init_broadcast_recv};
+static const struct broadcast_callbacks broadcast_call = {node_receiving_rssi_and_acknowledgment};
 static const struct broadcast_callbacks broadcast_data_call = {cluster_head_broadcast_recv};
 static const struct broadcast_callbacks broadcast_clustering_call = {clustering_broadcast_recv};
 
@@ -458,7 +465,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           HEAD CLUSTER SENDS ALL DATA TO GATEWAY
     ***********************************************************/
     if (role == 1 && mode_of_operation == 4) {
-      if (rssi_round_counter == 4) {
+      if (rssi_round_counter == 5) {
         printf("Broadcast - Cluster head sending acknowledgments.\n"); 
         cluster_head_sends_acknowledgments();
       }
