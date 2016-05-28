@@ -15,6 +15,8 @@ AUTOSTART_PROCESSES (&herd_monitor_gateway);
 
 static int battery_status_list[NUMBER_OF_COWS];
 static int temperature_list[NUMBER_OF_COWS];
+static int alarm[NUMBER_OF_COWS];
+static struct etimer time_last_seen[NUMBER_OF_COWS];
 
 static int RSSIarray[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
@@ -172,6 +174,10 @@ static void checkForMissingData(int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS])
     printf("%d ", check[i]);
   }
   printf("\n");
+
+  /*time_t start = time(NULL);
+sleep(3);
+printf("%.2f\n", (double)(time(NULL) - start));*/
 }
 
 /*Gateway receives temperature and battery status data from heads of clusters.*/
@@ -190,14 +196,18 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
       temperature_list[i] = *(row + 1);
     }
      
-    if (battery_status_list[0] >= 0) {
+    //if (battery_status_list[0] >= 0) {
       printf("Data received from head cow %d.\n", cow_id);
       for (i = 0; i < NUMBER_OF_COWS; i++) {
         printf("%d %d \n", battery_status_list[i], temperature_list[i]);
+             if (etimer_expired(&time_last_seen[i])) {
+                printf("%d .timer expiredkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk.\n", (i+1));
+             }
       }
-    }  
+    
+    //}  
 
-
+ 
 }
 
 static void init_broadcast_recv()
@@ -215,9 +225,8 @@ static struct broadcast_conn broadcast;
 PROCESS_THREAD (herd_monitor_gateway, ev, data)
 {
 
-    int RSSIs[5][5] = {{0,-9,0,0,0},{0,0,0,0,0}, {-1,0,-2,-3,-4},{-3,0,-2,0,-1},{0,0,0,0,0}};
-    checkForMissingData(RSSIs);
-
+    //int RSSIs[5][5] = {{0,-9,0,0,0},{0,0,0,0,0}, {-1,0,-2,-3,-4},{-3,0,-2,0,-1},{0,0,0,0,0}};
+    //checkForMissingData(RSSIs);
 
     PROCESS_EXITHANDLER(
         unicast_close(&uc);
@@ -225,6 +234,14 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     )
 
     PROCESS_BEGIN();
+
+    //Initializing alarm and time_last_seen array.
+    int i;
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      alarm[i] = 0;
+      etimer_set(&time_last_seen[i], CLOCK_SECOND * 10);
+      //http://contiki.sourceforge.net/docs/2.6/a01667.html
+    }
 
     static linkaddr_t addr; //nastavimo nas naslov na 0.0
     addr.u8[0] = 0;
