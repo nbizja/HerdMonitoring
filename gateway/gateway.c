@@ -198,12 +198,13 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
       }
     }
 
-   /* for (i = 0; i < NUMBER_OF_COWS; i++) {
+    //int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS] = {{-2,0,0,0,0}, {0,9,1,0,0},{-2,-3,-4, 0, 0}, {0,9,1,0,0}, {0,9,1,0,0}};
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
       for (j = 0; j < NUMBER_OF_COWS; j++) {
         printf("%d ", RSSIs[i][j]);
       }
       printf("\n");
-    }*/
+    }
 
       checkForMissingData(RSSIs);
       restart_timer_last_seen = 1;
@@ -211,23 +212,31 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
         //ce katere krave ne najdemo, ni cas za resetiranje
         if (alarm[i] == 1) {
           restart_timer_last_seen = 0;
+          break;
         }
       }
+
       if (restart_timer_last_seen == 1) {
-        //flag_last_seen = 0;
+        flag_last_seen = 0;
       }
      
+     /*
     //if (battery_status_list[0] >= 0) {
       printf("Data received from head cow %d.\n", cow_id);
       for (i = 0; i < NUMBER_OF_COWS; i++) {
         printf("%d %d \n", battery_status_list[i], temperature_list[i]);
       }
     
-    //} 
+    //}*/ 
 
       if (flag_last_seen == 1) {
-        printf("timer expired.\n");
-        flag_last_seen = 0;
+        printf("Timer for lost cows expired.\n");
+        for (i = 0; i < NUMBER_OF_COWS; i++) {
+          if (alarm[i] == 1)
+            printf("ALARM! %d. cow missing!\n", i+1);
+        }
+        //flag_last_seen = 0;
+        //ne bo se zacelo se enkrat stopati, ce pogresamo kravo/krave
       } 
 
  
@@ -281,7 +290,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     //Initializing alarm and time_last_seen array.
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++) {
-      alarm[i] = 0;
+      alarm[i] = 1;
     }
 
     unicast_close(&uc);
