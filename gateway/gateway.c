@@ -16,8 +16,9 @@ AUTOSTART_PROCESSES (&herd_monitor_gateway);
 static int battery_status_list[NUMBER_OF_COWS];
 static int temperature_list[NUMBER_OF_COWS];
 static int alarm[NUMBER_OF_COWS];
-static struct etimer time_last_seen[NUMBER_OF_COWS];
-
+static int time_last_seen_array;
+static int flag_last_seen;
+static int restart_timer_last_seen;
 static int RSSIarray[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
 static int int_cmp(int a[], int b[]) 
@@ -75,7 +76,6 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
         for (j = 0; j < NUMBER_OF_COWS; j++) {
             if (RSSI[i][j] <= 0) {
                 power[i][1]++;
-
             }
         }
     }
@@ -171,13 +171,12 @@ static void checkForMissingData(int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS])
         break;
       }
     }
-    printf("%d ", check[i]);
+    if (check[i] == 1) {
+      alarm[i] = 0;
+    }
+    //printf("%d ", check[i]);
   }
-  printf("\n");
-
-  /*time_t start = time(NULL);
-sleep(3);
-printf("%.2f\n", (double)(time(NULL) - start));*/
+  //printf("\n");
 }
 
 /*Gateway receives temperature and battery status data from heads of clusters.*/
@@ -194,18 +193,42 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
       int *row = *(data + i);
       battery_status_list[i] = *row;
       temperature_list[i] = *(row + 1);
+      for (j = 0; j < NUMBER_OF_COWS; j++) {
+        RSSIs[i][j+2] = *(row + j + 2);
+      }
     }
+
+   /* for (i = 0; i < NUMBER_OF_COWS; i++) {
+      for (j = 0; j < NUMBER_OF_COWS; j++) {
+        printf("%d ", RSSIs[i][j]);
+      }
+      printf("\n");
+    }*/
+
+      checkForMissingData(RSSIs);
+      restart_timer_last_seen = 1;
+      for (i = 0; i < NUMBER_OF_COWS; i++) {
+        //ce katere krave ne najdemo, ni cas za resetiranje
+        if (alarm[i] == 1) {
+          restart_timer_last_seen = 0;
+        }
+      }
+      if (restart_timer_last_seen == 1) {
+        //flag_last_seen = 0;
+      }
      
     //if (battery_status_list[0] >= 0) {
       printf("Data received from head cow %d.\n", cow_id);
       for (i = 0; i < NUMBER_OF_COWS; i++) {
         printf("%d %d \n", battery_status_list[i], temperature_list[i]);
-             if (etimer_expired(&time_last_seen[i])) {
-                printf("%d .timer expiredkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk.\n", (i+1));
-             }
       }
     
-    //}  
+    //} 
+
+      if (flag_last_seen == 1) {
+        printf("timer expired.\n");
+        flag_last_seen = 0;
+      } 
 
  
 }
@@ -235,14 +258,8 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 
     PROCESS_BEGIN();
 
-    //Initializing alarm and time_last_seen array.
-    int i;
-    for (i = 0; i < NUMBER_OF_COWS; i++) {
-      alarm[i] = 0;
-      etimer_set(&time_last_seen[i], CLOCK_SECOND * 10);
-      //http://contiki.sourceforge.net/docs/2.6/a01667.html
-    }
-
+    restart_timer_last_seen = 1;
+    flag_last_seen = 0;
     static linkaddr_t addr; //nastavimo nas naslov na 0.0
     addr.u8[0] = 0;
     addr.u8[1] = 0;
@@ -254,11 +271,18 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     longaddr[1] = addr.u8[1];
     cc2420_set_pan_addr(IEEE802154_PANID, shortaddr, longaddr); //spremenimo naslov radia
     static struct etimer et;
+    static struct etimer time_last_seen;
     unicast_open(&uc, 146, &unicast_callbacks);
     printf("GATEWAY is waiting for initilization measurements....\n");
 
     etimer_set(&et, CLOCK_SECOND * 3 );
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+
+    //Initializing alarm and time_last_seen array.
+    int i;
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      alarm[i] = 0;
+    }
 
     unicast_close(&uc);
 
@@ -269,6 +293,13 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 
     unicast_open(&uc, 146, &unicast_callbacks_data);
 
+    while (1) {
+      if (flag_last_seen == 0) {
+        etimer_set(&time_last_seen, CLOCK_SECOND * 10);
+      }
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&time_last_seen));
+      flag_last_seen = 1;
+    }
     
   PROCESS_END ();
 }       
