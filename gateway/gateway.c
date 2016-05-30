@@ -239,9 +239,9 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
         }
         //flag_last_seen = 0;
         //ne bo se zacelo se enkrat stopati, ce pogresamo kravo/krave
-      } 
-
- 
+      } else {
+        printf("All cows are safe, yes!\n");
+      }
 }
 
 static void init_broadcast_recv()
