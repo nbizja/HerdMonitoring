@@ -184,7 +184,7 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
     
-    int (*data)[NUMBER_OF_COWS+2] = (int (*)[NUMBER_OF_COWS+2])packetbuf_dataptr();
+    int (*data)[NUMBER_OF_COWS + 2] = (int (*)[NUMBER_OF_COWS + 2])packetbuf_dataptr();
     int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
     int i;
