@@ -184,27 +184,27 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
     
-    int (*data)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
+    int (*data)[NUMBER_OF_COWS+2] = (int (*)[NUMBER_OF_COWS+2])packetbuf_dataptr();
     int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
-    int i,j;
+    int i;
 
+    printf("Data received: \n");
     for (i = 0; i < NUMBER_OF_COWS; i++) {
       int *row = *(data + i);
       battery_status_list[i] = *row;
       temperature_list[i] = *(row + 1);
+      printf("[%d] Bat: %d, Temp: %d, RSSI: ", i, battery_status_list[i], temperature_list[i]);
+      int j;
       for (j = 0; j < NUMBER_OF_COWS; j++) {
-        RSSIs[i][j+2] = *(row + j + 2);
-      }
-    }
-
-    //int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS] = {{-2,0,0,0,0}, {0,9,1,0,0},{-2,-3,-4, 0, 0}, {0,9,1,0,0}, {0,9,1,0,0}};
-    for (i = 0; i < NUMBER_OF_COWS; i++) {
-      for (j = 0; j < NUMBER_OF_COWS; j++) {
-        printf("%d ", RSSIs[i][j]);
+        RSSIs[i][j] = *(row + j + 2);
+        printf("%d, ", RSSIs[i][j]);
       }
       printf("\n");
     }
+
+
+    //int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS] = {{-2,0,0,0,0}, {0,9,1,0,0},{-2,-3,-4, 0, 0}, {0,9,1,0,0}, {0,9,1,0,0}};
 
       checkForMissingData(RSSIs);
       restart_timer_last_seen = 1;

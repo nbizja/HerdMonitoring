@@ -227,8 +227,9 @@ static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struc
         printf("[%d] Bat: %d; Temp: %d, RSSI: ", i, toSend[i][0], toSend[i][1]);
         int j;
         for(j = 0; j < NUMBER_OF_COWS; j++) {
-          printf("%d, ", cluster_head_rssi_data[i][j]);
           toSend[i][j + 2] = cluster_head_rssi_data[i][j];
+          printf("%d, ", toSend[i][j + 2]);
+          
           cluster_head_rssi_data[i][j] = 0;
         }
         printf("\n");
@@ -255,16 +256,6 @@ static void cluster_head_sends_acknowledgments()
       cluster_head_ack_data[i] = 0;
     }
 }
-
-static void rssi_neighbours_send_to_gateway(struct unicast_conn *c)
-{
-    static linkaddr_t addr;
-    addr.u8[0] = 0;
-    addr.u8[1] = 0;
-    packetbuf_copyfrom(cluster_head_rssi_data, sizeof(cluster_head_rssi_data));
-    unicast_send(c, &addr);
-}
-
 
 static bool init_timedout = true;
 
@@ -421,23 +412,26 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     if (role == 0 && mode_of_operation == 4) {
       // Fixed packet size. packet[0] = battery, packet[1] = temp status, 
       // packet[2] = motion status, packet[3: 3+NUMBER_OF_COWS] = RSSI of neighbours 
-      int packet[NUMBER_OF_COWS + 3];
+      int packet[NUMBER_OF_COWS + 2];
 
       packet[0] = battery_status;
       packet[1] = temperature;
-      packet[2] = motion_status;
+      //packet[2] = motion_status;
+  
+      printf("Normal mode - broadcast message sent. Bat: %d, Temp: %d, RSSI: ",
+       battery_status, temperature);
 
       int ri;
-      for (ri = 3; ri < NUMBER_OF_COWS + 3; ri++) {
-         packet[ri] = neighbour_list[ri - 3];
+      for (ri = 2; ri < NUMBER_OF_COWS + 2; ri++) {
+         packet[ri] = neighbour_list[ri - 2];
+         printf("%d, ", packet[ri]);
       }
+      printf("\n");
 
       open_broadcast(&broadcast_data_call);
       packetbuf_copyfrom(packet, sizeof(packet));
       broadcast_send(&broadcast);
-      printf("Normal mode - broadcast message sent. %d, %d, %d \n",
-       battery_status, temperature, motion_status);
-
+    
       close_broadcast(); 
     }
 
