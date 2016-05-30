@@ -207,9 +207,11 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
     //int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS] = {{-2,0,0,0,0}, {0,9,1,0,0},{-2,-3,-4, 0, 0}, {0,9,1,0,0}, {0,9,1,0,0}};
 
       checkForMissingData(RSSIs);
+      //Head cow sent the data, so we assume it is not lost.
+      alarm[cow_id-1] = 0;
       restart_timer_last_seen = 1;
       for (i = 0; i < NUMBER_OF_COWS; i++) {
-        //ce katere krave ne najdemo, ni cas za resetiranje
+        //If the cow is not found, we do not reset.
         if (alarm[i] == 1) {
           restart_timer_last_seen = 0;
           break;
