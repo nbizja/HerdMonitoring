@@ -113,25 +113,55 @@ static void decrease_txpower()
 static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, const linkaddr_t *from)
 {
   int cow_id = from->u8[0];
-  int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
-  neighbour_list[cow_id - 1] = rssi;
-  printf("rssi_round_counter: %d \n", rssi_round_counter);
-  if (rssi_round_counter == 5) {
-    int * ack_pointer = (int *)packetbuf_dataptr();
-    //Number of successfully
-    int ack_number = *(ack_pointer + node_id - 1);
-    printf("Ack received: %d \n", ack_number);
-    //printf("Current txpower: %d\n", cc2420_get_txpower());
-    if (ack_number < 5) { //If some packet was not received successfully, then increase power.
-      printf("Increasing tx power.\n");
-      increase_txpower();
-    } else {
-      printf("Decreasing tx power.\n");
-      decrease_txpower();
+  printf("COW ID %d\n",cow_id);
+  if (cow_id == 0) {
+
+    printf("Clustering results received!\n");
+    int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
+
+    int i,j;
+    int k = 0;
+    //Checking if am cluster head.
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      int *cluster = *(clusters + i);
+      int cluster_head = *(cluster) + 1;
+      if (cluster_head == node_id) {
+          role = 1;
+          printf("I, node %d, am Cluster head and these are my nodes: ", node_id);
+          for (j = 1; j < NUMBER_OF_COWS; j++) {
+            int node = *(cluster + j) + 1;
+            if (node == 0) {
+              break;
+            }
+            printf("%d,",node);
+            my_clusters[j] = node;
+          }
+          printf("\n");   
+          break;
+      }
     }
-  } else {
-    printf("broadcast message received from cow %d with rssi %d \n",
-      cow_id, rssi);
+  }
+  else {
+    int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
+    neighbour_list[cow_id - 1] = rssi;
+    printf("rssi_round_counter: %d \n", rssi_round_counter);
+    if (rssi_round_counter == 5) {
+      int * ack_pointer = (int *)packetbuf_dataptr();
+      //Number of successfully
+      int ack_number = *(ack_pointer + node_id - 1);
+      printf("Ack received: %d \n", ack_number);
+      //printf("Current txpower: %d\n", cc2420_get_txpower());
+      if (ack_number < 5) { //If some packet was not received successfully, then increase power.
+        printf("Increasing tx power.\n");
+        increase_txpower();
+      } else {
+        printf("Decreasing tx power.\n");
+        decrease_txpower();
+      }
+    } else {
+      printf("broadcast message received from cow %d with rssi %d \n",
+        cow_id, rssi);
+    }
   }
 }
 

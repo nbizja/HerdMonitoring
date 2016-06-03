@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+#include "node-id.h"
 #include <stdlib.h>
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
@@ -98,7 +99,7 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
     //power[0] --> possible cluster heads
     bsort(power);
     for (i = 0; i < NUMBER_OF_COWS; i++) {
-        printf("%d %d\n",power[i][0],power[i][1]);
+        //printf("%d %d\n",power[i][0],power[i][1]);
         roles[i] = -2;
     }
 
@@ -128,13 +129,13 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
             counter++;
         }
     }
-    printf("Clusters: \n");
+    /*printf("Clusters: \n");
     for (i = 0; i < NUMBER_OF_COWS; i++) {
         for (j = 0; j < NUMBER_OF_COWS; j++) {
             printf("[%d][%d] = %d ;", i,j, clusters[i][j]); 
         }
         printf("\n");
-    }
+    }*/
     /*printf("GATEWAY broadcasted clusters....\n");
     for (i = 0; i < counter; i++) {
         printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
@@ -261,9 +262,6 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
       flag_last_seen = 0;
     }
 
-
-
-   
    /*
   //if (battery_status_list[0] >= 0) {
     printf("Data received from head cow %d.\n", cow_id);
@@ -272,8 +270,6 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
     }
   
   //}*/ 
-
-
 }
 
 static void init_broadcast_recv()
@@ -290,9 +286,6 @@ static struct broadcast_conn broadcast;
 
 PROCESS_THREAD (herd_monitor_gateway, ev, data)
 {
-
-    //int RSSIs[5][5] = {{0,-9,0,0,0},{0,0,0,0,0}, {-1,0,-2,-3,-4},{-3,0,-2,0,-1},{0,0,0,0,0}};
-    //checkForMissingData(RSSIs);
 
     PROCESS_EXITHANDLER(
         unicast_close(&uc);
@@ -317,7 +310,9 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     static struct etimer et;
     static struct etimer time_last_seen;
     static struct etimer round_timer;
-
+    static struct etimer reclustering_timer;
+    //etimer_set(&round_timer, CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1));
+    static int flag = 0;
     unicast_open(&uc, 146, &unicast_callbacks);
     printf("GATEWAY is waiting for initilization measurements....\n");
 
@@ -336,10 +331,18 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     printf("GATEWAY is computing clusters....\n");
     compute_clusters(RSSIarray, &broadcast);
     broadcast_close(&broadcast);
-    unicast_open(&uc, 146, &unicast_callbacks_data);
 
     while (1) {
-      etimer_set(&round_timer, CLOCK_SECOND*2);
+      unicast_open(&uc, 146, &unicast_callbacks_data);
+
+      etimer_set(&round_timer, CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1));
+      if (flag % 5 == 0) {
+        unicast_close(&uc);
+        broadcast_open(&broadcast, 129, &broadcast_call);
+        printf("GATEWAY is computing clusters....\n");
+        compute_clusters(RSSIarray, &broadcast);
+        broadcast_close(&broadcast);
+      }
       if (restart_timer_last_seen == 1) {
         printf("Alarm timer reset.\n");
         for (i = 0; i < NUMBER_OF_COWS; i++) {
@@ -354,6 +357,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
         flag_last_seen = 1;
 
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&round_timer));
+      flag ++;
     }
     
   PROCESS_END ();
