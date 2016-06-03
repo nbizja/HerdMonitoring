@@ -50,6 +50,15 @@ static void bsort(int arr[][2]) {
     }
 }
 
+float floor(float x)
+{
+  if(x >= 0.0f) {
+    return (float)((int)x);
+  } else {
+    return (float)((int)x - 1);
+  }
+}
+
 static int findPower(int arr[][2], int a) {
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++) {
@@ -194,8 +203,10 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
     for (i = 0; i < NUMBER_OF_COWS; i++) {
       int *row = *(data + i);
       battery_status_list[i] = *row;
+      float mv = (battery_status_list[i] * 2.500 * 2) / 4096;
       temperature_list[i] = *(row + 1);
-      printf("[%d] Bat: %d, Temp: %d, RSSI: ", i, battery_status_list[i], temperature_list[i]);
+      printf("[%d] Bat:%i(%ld.%03dmV), Temp:%d, RSSI: ", i, battery_status_list[i], (long)mv,
+       (unsigned)((mv - floor(mv)) * 1000), temperature_list[i]);
       int j;
       for (j = 0; j < NUMBER_OF_COWS; j++) {
         RSSIs[i][j] = *(row + j + 2);
