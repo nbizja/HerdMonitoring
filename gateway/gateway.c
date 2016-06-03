@@ -18,6 +18,7 @@ static int temperature_list[NUMBER_OF_COWS];
 static int alarm[NUMBER_OF_COWS];
 static int time_last_seen_array;
 static int flag_last_seen;
+static int alarm_mode;
 static int restart_timer_last_seen;
 static int RSSIarray[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
@@ -203,45 +204,43 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
       printf("\n");
     }
 
-
-    //int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS] = {{-2,0,0,0,0}, {0,9,1,0,0},{-2,-3,-4, 0, 0}, {0,9,1,0,0}, {0,9,1,0,0}};
-
-      checkForMissingData(RSSIs);
-      //Head cow sent the data, so we assume it is not lost.
-      alarm[cow_id-1] = 0;
-      restart_timer_last_seen = 1;
-      for (i = 0; i < NUMBER_OF_COWS; i++) {
-        //If the cow is not found, we do not reset.
-        if (alarm[i] == 1) {
-          restart_timer_last_seen = 0;
-          break;
+    checkForMissingData(RSSIs);
+    //Head cow sent the data, so we assume it is not lost.
+    alarm[cow_id-1] = 0;
+    restart_timer_last_seen = 1;
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      //If the cow is not found, we do not reset.
+      if (alarm[i] == 1) {
+        restart_timer_last_seen = 0;
+        if (alarm_mode == 1) {
+          printf("Alarm mode: cow %d is missing!\n", i+1);
         }
+        break;
       }
+    }
 
-      if (restart_timer_last_seen == 1) {
-        flag_last_seen = 0;
+    //Timer for alarm expired.
+    if (flag_last_seen == 1) {
+      if (restart_timer_last_seen == 0 && alarm_mode == 0) {
+          printf("Alarm set due to missing cow!\n");
+          alarm_mode = 1;
       }
-     
-     /*
-    //if (battery_status_list[0] >= 0) {
-      printf("Data received from head cow %d.\n", cow_id);
-      for (i = 0; i < NUMBER_OF_COWS; i++) {
-        printf("%d %d \n", battery_status_list[i], temperature_list[i]);
-      }
-    
-    //}*/ 
+      flag_last_seen = 0;
+    }
 
-      if (flag_last_seen == 1) {
-        printf("Timer for lost cows expired.\n");
-        for (i = 0; i < NUMBER_OF_COWS; i++) {
-          if (alarm[i] == 1)
-            printf("ALARM! %d. cow missing!\n", i+1);
-        }
-        //flag_last_seen = 0;
-        //ne bo se zacelo se enkrat stopati, ce pogresamo kravo/krave
-      } else {
-        printf("All cows are safe, yes!\n");
-      }
+
+
+   
+   /*
+  //if (battery_status_list[0] >= 0) {
+    printf("Data received from head cow %d.\n", cow_id);
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      printf("%d %d \n", battery_status_list[i], temperature_list[i]);
+    }
+  
+  //}*/ 
+
+
 }
 
 static void init_broadcast_recv()
@@ -271,6 +270,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 
     restart_timer_last_seen = 1;
     flag_last_seen = 0;
+    alarm_mode = 0;
     static linkaddr_t addr; //nastavimo nas naslov na 0.0
     addr.u8[0] = 0;
     addr.u8[1] = 0;
@@ -283,6 +283,8 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     cc2420_set_pan_addr(IEEE802154_PANID, shortaddr, longaddr); //spremenimo naslov radia
     static struct etimer et;
     static struct etimer time_last_seen;
+    static struct etimer round_timer;
+
     unicast_open(&uc, 146, &unicast_callbacks);
     printf("GATEWAY is waiting for initilization measurements....\n");
 
@@ -301,15 +303,24 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     printf("GATEWAY is computing clusters....\n");
     compute_clusters(RSSIarray, &broadcast);
     broadcast_close(&broadcast);
-
     unicast_open(&uc, 146, &unicast_callbacks_data);
 
     while (1) {
-      if (flag_last_seen == 0) {
+      etimer_set(&round_timer, CLOCK_SECOND*2);
+      if (restart_timer_last_seen == 1) {
+        printf("Alarm timer reset.\n");
+        for (i = 0; i < NUMBER_OF_COWS; i++) {
+          alarm[i] = 1;
+        }
+        alarm_mode = 0;
         etimer_set(&time_last_seen, CLOCK_SECOND * 10);
+        restart_timer_last_seen = 0;
+        flag_last_seen = 0;
       }
-      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&time_last_seen));
-      flag_last_seen = 1;
+      if(etimer_expired(&time_last_seen))
+        flag_last_seen = 1;
+
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&round_timer));
     }
     
   PROCESS_END ();
