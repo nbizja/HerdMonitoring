@@ -84,7 +84,7 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
         power[i][0] = i;
         power[i][1] = 0;
         for (j = 0; j < NUMBER_OF_COWS; j++) {
-            if (RSSI[i][j] <= 0) {
+            if (RSSI[i][j] < 0) {
                 power[i][1]++;
             }
         }
@@ -184,9 +184,29 @@ static void checkForMissingData(int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS])
     if (check[i] == 1) {
       alarm[i] = 0;
     }
-    //printf("%d ", check[i]);
   }
-  //printf("\n");
+}
+
+/*Method for updating RSSI array with the most recent data.
+  We have to be careful about which data to copy: cluster heads / zeros.*/
+static void updateRSSI(int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS])
+{
+  int i,j;
+  int check[NUMBER_OF_COWS];
+  for (i = 0; i < NUMBER_OF_COWS; i++) {
+    check[i] = 0;
+    for (j = 0; j < NUMBER_OF_COWS; j++) {
+      if (RSSIs[i][j] < 0) {
+        check[i] = 1;
+        break;
+      }
+    }
+    if (check[i] == 1) {
+      for (j = 0; j < NUMBER_OF_COWS; j++) {
+        RSSIarray[i][j] = RSSIs[i][j];
+      }
+    }
+  }
 }
 
 /*Gateway receives temperature and battery status data from heads of clusters.*/
@@ -215,7 +235,9 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
       printf("\n");
     }
 
+    //Next 3 lines order must not change!
     checkForMissingData(RSSIs);
+    updateRSSI(RSSIs);
     //Head cow sent the data, so we assume it is not lost.
     alarm[cow_id-1] = 0;
     restart_timer_last_seen = 1;
