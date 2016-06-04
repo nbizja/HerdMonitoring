@@ -113,10 +113,9 @@ static void decrease_txpower()
 static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, const linkaddr_t *from)
 {
   int cow_id = from->u8[0];
-  printf("COW ID %d\n",cow_id);
   if (cow_id == 0) {
 
-    printf("Clustering results received!\n");
+    //printf("Clustering results received!\n");
     int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
 
     int i,j;
@@ -138,6 +137,8 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
           }
           printf("\n");   
           break;
+      } else {
+        role = 0;
       }
     }
   }
@@ -169,23 +170,53 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
 static void cluster_head_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
-    //We increment received packet count. This will be broadcasted on every 5th interval.
-    cluster_head_ack_data[cow_id - 1]++;
-    printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
+    if (cow_id == 0) {
 
-    int * bat_temp = (int *)packetbuf_dataptr();
+      //printf("Clustering results received!\n");
+      int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
 
-    cluster_head_battery_data[cow_id - 1] = *(bat_temp + 0);
-    cluster_head_temperature_data[cow_id - 1] = *(bat_temp + 1);
-    printf("CLUSTER HEAD RECEIVED DATA: %d, %d", 
-      cluster_head_battery_data[cow_id - 1], 
-      cluster_head_temperature_data[cow_id - 1]);
-    int i;
-    for (i = 2; i < NUMBER_OF_COWS + 2; i++) {
-      printf(", %d", *(bat_temp + i));
-      cluster_head_rssi_data[cow_id - 1][i - 2] = *(bat_temp + i);
+      int i,j;
+      int k = 0;
+      //Checking if am cluster head.
+      for (i = 0; i < NUMBER_OF_COWS; i++) {
+        int *cluster = *(clusters + i);
+        int cluster_head = *(cluster) + 1;
+        if (cluster_head == node_id) {
+            role = 1;
+            printf("I, node %d, am Cluster head and these are my nodes: ", node_id);
+            for (j = 1; j < NUMBER_OF_COWS; j++) {
+              int node = *(cluster + j) + 1;
+              if (node == 0) {
+                break;
+              }
+              printf("%d,",node);
+              my_clusters[j] = node;
+            }
+            printf("\n");   
+            break;
+        } else {
+          role = 0;
+        }
+      }
+    } else {
+      //We increment received packet count. This will be broadcasted on every 5th interval.
+      cluster_head_ack_data[cow_id - 1]++;
+      printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
+
+      int * bat_temp = (int *)packetbuf_dataptr();
+
+      cluster_head_battery_data[cow_id - 1] = *(bat_temp + 0);
+      cluster_head_temperature_data[cow_id - 1] = *(bat_temp + 1);
+      printf("CLUSTER HEAD RECEIVED DATA: %d, %d", 
+        cluster_head_battery_data[cow_id - 1], 
+        cluster_head_temperature_data[cow_id - 1]);
+      int i;
+      for (i = 2; i < NUMBER_OF_COWS + 2; i++) {
+        printf(", %d", *(bat_temp + i));
+        cluster_head_rssi_data[cow_id - 1][i - 2] = *(bat_temp + i);
+      }
+      printf("\n");
     }
-    printf("\n");
 }
 
 static void neighour_data_recv(struct broadcast_conn *c, const linkaddr_t *from)

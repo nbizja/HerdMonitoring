@@ -78,6 +78,13 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
     int i,j,c;
     int power[NUMBER_OF_COWS][2];
 
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      for (j = 0; j < NUMBER_OF_COWS; j++) {
+        printf("%d ", RSSIarray[i][j]);
+      }
+      printf("\n");
+    }
+
     //Creating power array. It displays number of neighbours of each node. 
     // power[2][1] --> number of neighbours of 3. node
     // power[2][0] --> 2
@@ -136,7 +143,7 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
         }
         printf("\n");
     }*/
-    /*printf("GATEWAY broadcasted clusters....\n");
+    printf("GATEWAY broadcasted clusters....\n");
     for (i = 0; i < counter; i++) {
         printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
         int p = findPower(power, clusters[i][0]);
@@ -144,7 +151,7 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
             printf("%d ", clusters[i][j]+1);
         }
         printf("\n");
-    } */
+    } 
 
     packetbuf_copyfrom(clusters, sizeof(clusters));
     broadcast_send(conn);

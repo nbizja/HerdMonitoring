@@ -6,3 +6,23 @@
 
 BUG:
 ->temperature and battery are not visible every 30 seconds anymore!
+
+
+Ko bodo delali time sloti:
+-> timer za alarm:
+    START timer
+    ko dobi vse podatke -> START timer
+    Krava se izgubi -> potece 10s -> alarm set!
+    alarm mode on (timer ne deluje)
+    spet vse ok -> restart timer
+
+    ce gre krava potem v drug cluster, vse ok, saj je dolocen samo cluster head, ne tudi clani
+    cluster head namrec vse poslusa in zbira podatke od vseh (ki jih pac dobi)
+
+
+    PROBLEM:
+    cluster head se izgubi
+    cluster head porabi baterijo
+
+
+RECLUSTERING
