@@ -133,7 +133,7 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
   int cow_id = from->u8[0];
   if (cow_id == 0) {
 
-    printf("Clustering results received!\n");
+    //printf("Clustering results received!\n");
     int *cluster = (int *)packetbuf_dataptr();
     parse_clustering_results(cluster);
 
@@ -418,7 +418,6 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     if (mode_of_operation == 1) {
 
       printf("Waiting for my slot...\n"); 
-
       printf("Timer expired... \n");
       packetbuf_copyfrom("Initialization...\n", 6);
       broadcast_send(&broadcast);
