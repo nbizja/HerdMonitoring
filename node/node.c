@@ -54,7 +54,8 @@ static int cluster_head_battery_data[NUMBER_OF_COWS];
 static int cluster_head_temperature_data[NUMBER_OF_COWS];
 //Cluster head counts received packets from each cow. 
 //This is broadcasted every 5th round (when nodes are listening for rssi) as one global acknowledgment.
-static int cluster_head_ack_data[NUMBER_OF_COWS];
+static int cluster_head_ack_data[NUMBER_OF_COWS][2];
+
 
 // 1 = standing, 2 = moving slowly, 3 = running 
 static int motion_status = 0;
@@ -93,8 +94,7 @@ static void reset_neighbour_list()
 
 static void increase_txpower()
 {
-    power_index += 2;
-    if (power_index > 7) {
+    if (++power_index > 7) {
       power_index = 7;
     }
     cc2420_set_txpower(TXPOWER[power_index]);
@@ -132,7 +132,7 @@ static void parse_clustering_results(int8_t *cluster)
 static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, const linkaddr_t *from)
 {
   int cow_id = from->u8[0];
-  printf("COW ID %d\n",cow_id);
+
   if (cow_id == 0) {
 
     printf("Clustering results received!\n");
@@ -144,17 +144,24 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
     neighbour_list[cow_id - 1] = rssi;
     printf("rssi_round_counter: %d \n", rssi_round_counter);
     if (rssi_round_counter == 5) {
-      int * ack_pointer = (int *)packetbuf_dataptr();
+      int (*ack_pointer)[2] = (int (*)[2])packetbuf_dataptr();
       //Number of successfully
-      int ack_number = *(ack_pointer + node_id - 1);
+      int *ack = *(ack_pointer + node_id - 1);
+      int ack_number = *ack;
+      int last_rssi = *(ack + 1);
+
       printf("Ack received: %d \n", ack_number);
-      //printf("Current txpower: %d\n", cc2420_get_txpower());
-      if (ack_number < 5) { //If some packet was not received successfully, then increase power.
+      printf("Last rssi: %d \n", last_rssi);
+      //Target RSSI is between -65 and -78 
+      //(low enough that it doesnt consume too much power and high enough that allow some random cow movements without packet loss)
+      if (ack_number < 5 || last_rssi < -78) { //If some packet was not received successfully, then increase power.
         printf("Increasing tx power.\n");
         increase_txpower();
-      } else {
+      } else if (ack_number > 4 && last_rssi > -65) {
         printf("Decreasing tx power.\n");
         decrease_txpower();
+      } else {
+        printf("Tx power is at optimal level \n");
       }
     } else {
       printf("broadcast message received from cow %d with rssi %d \n",
@@ -167,8 +174,12 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
 static void cluster_head_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
-    //We increment received packet count. This will be broadcasted on every 5th interval.
-    cluster_head_ack_data[cow_id - 1]++;
+    //We store the running average RSSI. This will be broadcasted on every 5th interval
+    //as an acknowledgment. Node will decide if it needs to increase/decrease power
+    
+    cluster_head_ack_data[cow_id - 1][0]++;
+    cluster_head_ack_data[cow_id - 1][1] = packetbuf_attr(PACKETBUF_ATTR_RSSI);
+
     printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
 
     int * bat_temp = (int *)packetbuf_dataptr();
@@ -276,7 +287,8 @@ static void cluster_head_sends_acknowledgments()
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++)
     {
-      cluster_head_ack_data[i] = 0;
+      cluster_head_ack_data[i][0] = 0;
+      cluster_head_ack_data[i][1] = 0;
     }
 }
 
@@ -498,6 +510,9 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       } else {
         rssi_round_counter++;
       }
+    } else if (mode_of_operation == 0) {
+      close_broadcast();
+      mode_of_operation = 4;
     }
 
   }
