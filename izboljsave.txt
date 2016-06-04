@@ -26,3 +26,5 @@ Ko bodo delali time sloti:
 
 
 RECLUSTERING
+Paketi so bili preveliki, zato cluster head pošlje samo podatke petih krav naenkrat.
+
