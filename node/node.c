@@ -178,7 +178,7 @@ static void cluster_head_broadcast_recv(struct broadcast_conn *c, const linkaddr
     } else {
       //We increment received packet count. This will be broadcasted on every 5th interval.
       cluster_head_ack_data[cow_id - 1]++;
-      printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
+      //printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
 
       int * bat_temp = (int *)packetbuf_dataptr();
 

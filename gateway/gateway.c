@@ -223,7 +223,7 @@ static void updateRSSI(int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS])
 static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
-        int i,j;
+    int i,j;
     int8_t (*data)[NUMBER_OF_COWS + 3] = (int8_t (*)[NUMBER_OF_COWS + 3])packetbuf_dataptr();
     int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS];
     for (i = 0; i < NUMBER_OF_COWS; i++) {
@@ -245,9 +245,19 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
       for (j = 0; j < NUMBER_OF_COWS; j++) {
         RSSIs[cow-1][j] = *(row + j + 3);
         printf("%d, ", RSSIs[cow-1][j]);
+        if ((j == (cow_id-1)) && (RSSIs[cow-1][j] < 0)) {
+          RSSIs[cow_id-1][cow-1] = RSSIs[cow-1][j];
+        }
       }
       printf("\n");
     }
+    /*
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      for (j = 0; j < NUMBER_OF_COWS; j++) {
+        printf("%d ", RSSIs[i][j]);
+      }
+      printf("\n");
+    }*/
 
     //Next 3 lines order must not change!
     checkForMissingData(RSSIs);
@@ -345,7 +355,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
       unicast_open(&uc, 146, &unicast_callbacks_data);
 
       etimer_set(&round_timer, CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1));
-      if (flag % 5 == 0) {
+      if (flag % 15 == 0) {
         unicast_close(&uc);
         broadcast_open(&broadcast, 129, &broadcast_call);
         printf("GATEWAY is computing clusters....\n");
