@@ -17,8 +17,8 @@
 
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
-#define NUMBER_OF_COWS 5 //Number of cows
-#define PACKET_TIME 0.15
+#define NUMBER_OF_COWS 15 //Number of cows
+#define PACKET_TIME 0.3
 
 PROCESS (herd_monitor_node, "Herd monitor - node");
 AUTOSTART_PROCESSES (&herd_monitor_node);
@@ -107,6 +107,24 @@ static void decrease_txpower()
     cc2420_set_txpower(TXPOWER[power_index]);
 }
 
+static void parse_clustering_results(int8_t *cluster)
+{
+    int i;
+    //Default role is 0 = regular node;
+    role = 0;
+
+    //Checking if am cluster head.
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      if (*(cluster + i) == node_id) {
+          role = 1;
+          printf("I, node %d, am Cluster head!\n", node_id);
+      }
+    }
+    if (role == 0) {
+        printf("I, node %d, am regular node!\n", node_id);
+    }
+}
+
 //This function serves two purposes. It measures rssi from neighbours and
 //it accepts acknowledgment from cluster head.
 //This happens every 5th round.
@@ -115,32 +133,10 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
   int cow_id = from->u8[0];
   if (cow_id == 0) {
 
-    //printf("Clustering results received!\n");
-    int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
+    printf("Clustering results received!\n");
+    int *cluster = (int *)packetbuf_dataptr();
+    parse_clustering_results(cluster);
 
-    int i,j;
-    int k = 0;
-    //Checking if am cluster head.
-    for (i = 0; i < NUMBER_OF_COWS; i++) {
-      int *cluster = *(clusters + i);
-      int cluster_head = *(cluster) + 1;
-      if (cluster_head == node_id) {
-          role = 1;
-          printf("I, node %d, am Cluster head and these are my nodes: ", node_id);
-          for (j = 1; j < NUMBER_OF_COWS; j++) {
-            int node = *(cluster + j) + 1;
-            if (node == 0) {
-              break;
-            }
-            printf("%d,",node);
-            my_clusters[j] = node;
-          }
-          printf("\n");   
-          break;
-      } else {
-        role = 0;
-      }
-    }
   }
   else {
     int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
@@ -234,29 +230,10 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
 {
     printf("Clustering results received!\n");
 
-    int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
+    int *cluster = (int *)packetbuf_dataptr();
 
-    int i,j;
-    int k = 0;
-    //Checking if am cluster head.
-    for (i = 0; i < NUMBER_OF_COWS; i++) {
-      int *cluster = *(clusters + i);
-      int cluster_head = *(cluster) + 1;
-      if (cluster_head == node_id) {
-          role = 1;
-          printf("I, node %d, am Cluster head and these are my nodes: ", node_id);
-          for (j = 1; j < NUMBER_OF_COWS; j++) {
-            int node = *(cluster + j) + 1;
-            if (node == 0) {
-              break;
-            }
-            printf("%d,",node);
-            my_clusters[j] = node;
-          }
-          printf("\n");   
-          break;
-      }
-    }
+    parse_clustering_results(cluster);
+    
     broadcast_close(c);
     mode_of_operation = 4;
 }
@@ -542,4 +519,3 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   
   PROCESS_END ();
 }
-

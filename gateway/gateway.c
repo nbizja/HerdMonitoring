@@ -8,8 +8,8 @@
 #include <stdlib.h>
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
-#define NUMBER_OF_COWS 5 //Number of cows
-#define PACKET_TIME 0.15
+#define NUMBER_OF_COWS 15 //Number of cows
+#define PACKET_TIME 0.3
 
 PROCESS (herd_monitor_gateway, "Herd monitor - gateway");
 AUTOSTART_PROCESSES (&herd_monitor_gateway);
@@ -136,27 +136,25 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
             counter++;
         }
     }
-    /*printf("Clusters: \n");
+
+    int8_t clust[NUMBER_OF_COWS];
     for (i = 0; i < NUMBER_OF_COWS; i++) {
-        for (j = 0; j < NUMBER_OF_COWS; j++) {
-            printf("[%d][%d] = %d ;", i,j, clusters[i][j]); 
-        }
-        printf("\n");
-    }*/
-    printf("GATEWAY broadcasted clusters....\n");
-    for (i = 0; i < counter; i++) {
-        printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
+        //printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
+        clust[i] = clusters[i][0] + 1;
+        /*
         int p = findPower(power, clusters[i][0]);
         for (j = 1; j <= p; j++) {
             printf("%d ", clusters[i][j]+1);
         }
         printf("\n");
-    } 
-
-    packetbuf_copyfrom(clusters, sizeof(clusters));
+        */
+    }
+    packetbuf_copyfrom(clust, sizeof(clust));
     broadcast_send(conn);
     printf("Clusters sent  \n");
 }
+
+
 
 static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
 {
@@ -173,8 +171,8 @@ static void init_power_received(struct unicast_conn *c, const linkaddr_t *from)
     printf("\n");
 
     char *ack = "Ack";
-    packetbuf_copyfrom(ack, sizeof(ack));
-    unicast_send(c, from);
+    //packetbuf_copyfrom(ack, sizeof(ack));
+    //unicast_send(c, from);
 }
 
 static void checkForMissingData(int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS])
@@ -323,7 +321,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     unicast_open(&uc, 146, &unicast_callbacks);
     printf("GATEWAY is waiting for initilization measurements....\n");
 
-    etimer_set(&et, CLOCK_SECOND * 3 );
+    etimer_set(&et, CLOCK_SECOND * 2 * PACKET_TIME * (NUMBER_OF_COWS + 1));
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
     //Initializing alarm and time_last_seen array.
@@ -333,11 +331,6 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     }
 
     unicast_close(&uc);
-
-    broadcast_open(&broadcast, 129, &broadcast_call);
-    printf("GATEWAY is computing clusters....\n");
-    compute_clusters(RSSIarray, &broadcast);
-    broadcast_close(&broadcast);
 
     while (1) {
       unicast_open(&uc, 146, &unicast_callbacks_data);
