@@ -79,6 +79,7 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
     int i,j,c;
     int power[NUMBER_OF_COWS][2];
 
+    printf("RSSI ARRAY:\n");
     for (i = 0; i < NUMBER_OF_COWS; i++) {
       for (j = 0; j < NUMBER_OF_COWS; j++) {
         printf("%d ", RSSIarray[i][j]);
@@ -107,7 +108,7 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
     //power[0] --> possible cluster heads
     bsort(power);
     for (i = 0; i < NUMBER_OF_COWS; i++) {
-        //printf("%d %d\n",power[i][0],power[i][1]);
+        //printf("%d %d\n",power[i][0]+1,power[i][1]);
         roles[i] = -2;
     }
 
@@ -140,15 +141,17 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
 
     int8_t clust[NUMBER_OF_COWS];
     for (i = 0; i < NUMBER_OF_COWS; i++) {
-        //printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
+      int p = findPower(power, clusters[i][0]);
+      if (p > 0) {
+        printf("HEAD: %d -- NODES: ",clusters[i][0]+1);
         clust[i] = clusters[i][0] + 1;
-        /*
-        int p = findPower(power, clusters[i][0]);
+        
         for (j = 1; j <= p; j++) {
             printf("%d ", clusters[i][j]+1);
         }
         printf("\n");
-        */
+      }
+        
     }
     packetbuf_copyfrom(clust, sizeof(clust));
     broadcast_send(conn);
@@ -220,25 +223,28 @@ static void updateRSSI(int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS])
 static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
-    
+        int i,j;
     int8_t (*data)[NUMBER_OF_COWS + 3] = (int8_t (*)[NUMBER_OF_COWS + 3])packetbuf_dataptr();
     int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS];
-
-    int i;
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      for (j = 0; j < NUMBER_OF_COWS; j++) {
+        RSSIs[i][j] = 1;
+      }
+    }
 
     printf("Data received: \n");
     for (i = 0; i < COWS_IN_PACKET; i++) {
       int8_t *row = *(data + i);
       int8_t cow = *row;
-      battery_status_list[cow] = *(row + 1);
-      float mv = (battery_status_list[cow] * 2.500 * 2) / 4096;
-      temperature_list[cow] = *(row + 2);
-      printf("[%d] Bat:%i(%ld.%03dmV), Temp:%d, RSSI: ", cow, battery_status_list[cow], (long)mv,
-       (unsigned)((mv - floor(mv)) * 1000), temperature_list[cow]);
+      battery_status_list[cow-1] = *(row + 1);
+      float mv = (battery_status_list[cow-1] * 2.500 * 2) / 4096;
+      temperature_list[cow-1] = *(row + 2);
+      printf("[%d] Bat:%i(%ld.%03dmV), Temp:%d, RSSI: ", cow, battery_status_list[cow-1], (long)mv,
+       (unsigned)((mv - floor(mv)) * 1000), temperature_list[cow-1]);
       int j;
       for (j = 0; j < NUMBER_OF_COWS; j++) {
-        RSSIs[cow][j] = *(row + j + 3);
-        printf("%d, ", RSSIs[cow][j]);
+        RSSIs[cow-1][j] = *(row + j + 3);
+        printf("%d, ", RSSIs[cow-1][j]);
       }
       printf("\n");
     }
@@ -246,6 +252,7 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
     //Next 3 lines order must not change!
     checkForMissingData(RSSIs);
     updateRSSI(RSSIs);
+
     //Head cow sent the data, so we assume it is not lost.
     alarm[cow_id-1] = 0;
     restart_timer_last_seen = 1;

@@ -172,27 +172,9 @@ static void cluster_head_broadcast_recv(struct broadcast_conn *c, const linkaddr
 
       int i,j;
       int k = 0;
-      //Checking if am cluster head.
-      for (i = 0; i < NUMBER_OF_COWS; i++) {
-        int *cluster = *(clusters + i);
-        int cluster_head = *(cluster) + 1;
-        if (cluster_head == node_id) {
-            role = 1;
-            printf("I, node %d, am Cluster head and these are my nodes: ", node_id);
-            for (j = 1; j < NUMBER_OF_COWS; j++) {
-              int node = *(cluster + j) + 1;
-              if (node == 0) {
-                break;
-              }
-              printf("%d,",node);
-              my_clusters[j] = node;
-            }
-            printf("\n");   
-            break;
-        } else {
-          role = 0;
-        }
-      }
+
+      parse_clustering_results(clusters);
+
     } else {
       //We increment received packet count. This will be broadcasted on every 5th interval.
       cluster_head_ack_data[cow_id - 1]++;
@@ -227,7 +209,7 @@ static void neighour_data_recv(struct broadcast_conn *c, const linkaddr_t *from)
 
 static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 {
-    printf("Clustering results received!\n");
+    //printf("Clustering results received!\n");
 
     int8_t *cluster = (int8_t *)packetbuf_dataptr();
 
