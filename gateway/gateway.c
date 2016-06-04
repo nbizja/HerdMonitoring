@@ -10,6 +10,7 @@
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
 #define NUMBER_OF_COWS 15 //Number of cows
 #define PACKET_TIME 0.3
+#define COWS_IN_PACKET 5
 
 PROCESS (herd_monitor_gateway, "Herd monitor - gateway");
 AUTOSTART_PROCESSES (&herd_monitor_gateway);
@@ -214,23 +215,24 @@ static void init_data_received(struct unicast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
     
-    int (*data)[NUMBER_OF_COWS + 2] = (int (*)[NUMBER_OF_COWS + 2])packetbuf_dataptr();
+    int8_t (*data)[NUMBER_OF_COWS + 3] = (int8_t (*)[NUMBER_OF_COWS + 3])packetbuf_dataptr();
     int RSSIs[NUMBER_OF_COWS][NUMBER_OF_COWS];
 
     int i;
 
     printf("Data received: \n");
-    for (i = 0; i < NUMBER_OF_COWS; i++) {
-      int *row = *(data + i);
-      battery_status_list[i] = *row;
-      float mv = (battery_status_list[i] * 2.500 * 2) / 4096;
-      temperature_list[i] = *(row + 1);
-      printf("[%d] Bat:%i(%ld.%03dmV), Temp:%d, RSSI: ", i, battery_status_list[i], (long)mv,
-       (unsigned)((mv - floor(mv)) * 1000), temperature_list[i]);
+    for (i = 0; i < COWS_IN_PACKET; i++) {
+      int8_t *row = *(data + i);
+      int8_t cow = *row;
+      battery_status_list[cow] = *(row + 1);
+      float mv = (battery_status_list[cow] * 2.500 * 2) / 4096;
+      temperature_list[cow] = *(row + 2);
+      printf("[%d] Bat:%i(%ld.%03dmV), Temp:%d, RSSI: ", cow, battery_status_list[cow], (long)mv,
+       (unsigned)((mv - floor(mv)) * 1000), temperature_list[cow]);
       int j;
       for (j = 0; j < NUMBER_OF_COWS; j++) {
-        RSSIs[i][j] = *(row + j + 2);
-        printf("%d, ", RSSIs[i][j]);
+        RSSIs[cow][j] = *(row + j + 3);
+        printf("%d, ", RSSIs[cow][j]);
       }
       printf("\n");
     }

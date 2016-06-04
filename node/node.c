@@ -19,6 +19,7 @@
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
 #define NUMBER_OF_COWS 15 //Number of cows
 #define PACKET_TIME 0.3
+#define COWS_IN_PACKET 5
 
 PROCESS (herd_monitor_node, "Herd monitor - node");
 AUTOSTART_PROCESSES (&herd_monitor_node);
@@ -135,7 +136,7 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
   if (cow_id == 0) {
 
     printf("Clustering results received!\n");
-    int *cluster = (int *)packetbuf_dataptr();
+    int8_t *cluster = (int8_t *)packetbuf_dataptr();
     parse_clustering_results(cluster);
   }
   else {
@@ -200,10 +201,10 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
 {
     printf("Clustering results received!\n");
 
-    int *cluster = (int *)packetbuf_dataptr();
+    int8_t *cluster = (int8_t *)packetbuf_dataptr();
 
     parse_clustering_results(cluster);
-    
+
     broadcast_close(c);
     mode_of_operation = 4;
 }
@@ -224,33 +225,47 @@ static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struc
     static linkaddr_t addr;
     addr.u8[0] = 0;
     addr.u8[1] = 0;
-    int toSend[NUMBER_OF_COWS][NUMBER_OF_COWS + 2];
-    int i;
+
+    //We send the data from five cows only, otherwise the packet is too big.
+    //In each round we send data from different cows.
+    //[0][0] = cow id,  [0][1] = bat, [0][2] = temp [0][3-15] = RSSI
+    int8_t toSend[COWS_IN_PACKET][NUMBER_OF_COWS + 3];
     printf("Sending data: \n");
-    for (i = 0; i < NUMBER_OF_COWS; i++) {
-        toSend[i][0] = cluster_head_battery_data[i];
-        toSend[i][1] = cluster_head_temperature_data[i];
+
+    int8_t last_processed_cow = COWS_IN_PACKET * (rssi_round_counter + 1);
+    if (last_processed_cow > NUMBER_OF_COWS) {
+      last_processed_cow = NUMBER_OF_COWS;
+    }
+    
+    int8_t j;
+    int i = COWS_IN_PACKET * rssi_round_counter;
+
+    if (i < NUMBER_OF_COWS) {
+      for (j=0; i < last_processed_cow; i++,j++) {
+        toSend[j][0] = (int8_t)(i + 1);
+        toSend[j][1] = (int8_t)cluster_head_battery_data[i];
+        toSend[j][2] = (int8_t)cluster_head_temperature_data[i];
         cluster_head_battery_data[i] = -1;
         cluster_head_temperature_data[i] = -1;
-        printf("[%d] Bat: %d; Temp: %d, RSSI: ", i, toSend[i][0], toSend[i][1]);
-        int j;
-        for(j = 0; j < NUMBER_OF_COWS; j++) {
-          toSend[i][j + 2] = cluster_head_rssi_data[i][j];
-          printf("%d, ", toSend[i][j + 2]);
+        printf("[%d] Bat: %d; Temp: %d, RSSI: ", toSend[j][0], toSend[j][1], toSend[j][2]);
+        int k;
+        for(k = 0; k < NUMBER_OF_COWS; k++) {
+          toSend[j][k + 3] = (int8_t)cluster_head_rssi_data[i][k];
+          printf("%d, ", toSend[j][k + 3]);
           
-          cluster_head_rssi_data[i][j] = 0;
+          cluster_head_rssi_data[i][k] = 0;
         }
         printf("\n");
-
+      }
+      //We also have to send head's data.
+      //toSend[node_id - 1][0] = b;
+      //toSend[node_id - 1][1] = t;
+      unicast_open(c, 146, callback);
+      packetbuf_copyfrom(toSend, sizeof(toSend));
+      unicast_send(c, &addr);
+      unicast_close(c);
+      printf("Cluster head sending temperature, battery and rssi data to the gateway.\n"); 
     }
-    //We also have to send head's data.
-    //toSend[node_id - 1][0] = b;
-    //toSend[node_id - 1][1] = t;
-    unicast_open(c, 146, callback);
-    packetbuf_copyfrom(toSend, sizeof(toSend));
-    unicast_send(c, &addr);
-    unicast_close(c);
-    printf("Cluster head sending temperature, battery and rssi data to the gateway.\n"); 
 }
 
 static void cluster_head_sends_acknowledgments()

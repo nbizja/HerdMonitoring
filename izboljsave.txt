@@ -6,3 +6,5 @@
 
 BUG:
 ->temperature and battery are not visible every 30 seconds anymore!
+
+Paketi so bili preveliki, zato cluster head pošlje samo podatke petih krav naenkrat.
