@@ -168,13 +168,16 @@ static void node_receiving_rssi_and_acknowledgment(const struct broadcast_conn *
       printf("Reported rssi is: %d\n", acknowledged_rssi);
       if (acknowledged_rssi == -101) {
         node_power_management_flag = 2; //Packet failed. Full power!
-        printf("Tx power at optimal level: %d\n", acknowledged_rssi);
+        printf("Some packets failed. Full power!\n");
+
       } else if (acknowledged_rssi < -75) { //If some packet was not received successfully, then increase power.
         printf("Increasing tx power.\n");
         node_power_management_flag = 1;
       } else if (acknowledged_rssi > -65) {
         printf("Decreasing tx power.\n");
         node_power_management_flag = -1;
+      } else {
+        printf("Tx power at optimal level: %d\n", acknowledged_rssi);
       }
     }
     
@@ -489,12 +492,10 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           printf("Unicast - Sending data to the gateway.\n"); 
 
           cluster_head_sends_all_data_to_gateway(&uc, &unicast_callbacks_data);
+                    //We close the connection to the gateway and start listening again for
+          //broadcasts of nodes.
+          open_broadcast(&broadcast_data_call);
       }
-
-      
-      //We close the connection to the gateway and start listening again for
-      //broadcasts of nodes.
-      open_broadcast(&broadcast_data_call);
     }
 
 

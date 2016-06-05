@@ -363,7 +363,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
       etimer_set(&round_timer, CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1));
       etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 
-      if (flag % 20 == 0) {
+      if (flag % 40 == 0) {
 
         unicast_close(&uc);
         broadcast_open(&broadcast, 129, &broadcast_call);
