@@ -75,7 +75,21 @@ float floor(float x)
   }
 }
 
-static void reset_neighbour_list()
+static void open_broadcast(struct broadcast_callbacks *cl)
+{
+  if (is_broadcast_open == 0) {
+    is_broadcast_open = 1;
+    broadcast_open(&broadcast, 129, cl);
+  }
+}
+
+static void close_broadcast()
+{
+  broadcast_close(&broadcast);
+  is_broadcast_open = 0;
+}
+
+static void init_neighbour_bat_temp_rssi_list()
 {
   printf("Reseting list... \n");
   int i;
@@ -86,7 +100,7 @@ static void reset_neighbour_list()
       cluster_head_temperature_data[i] = -1;
       int j;
       for (j = 0; j < NUMBER_OF_COWS; j++) {
-        cluster_head_rssi_data[i][j] = 0;
+        cluster_head_rssi_data[i][j] = 1;
       }
   }
 }
@@ -215,7 +229,7 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
 
     parse_clustering_results(cluster);
 
-    broadcast_close(c);
+    close_broadcast();
     mode_of_operation = 4;
 }
 
@@ -242,15 +256,15 @@ static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struc
     int8_t toSend[COWS_IN_PACKET][NUMBER_OF_COWS + 3];
     printf("Sending data: \n");
 
-    int8_t last_processed_cow = COWS_IN_PACKET * (rssi_round_counter + 1);
+    int mod = rssi_round_counter % (NUMBER_OF_COWS / COWS_IN_PACKET);
+    int8_t last_processed_cow = COWS_IN_PACKET * (mod + 1);
     if (last_processed_cow > NUMBER_OF_COWS) {
       last_processed_cow = NUMBER_OF_COWS;
     }
     
     int8_t j;
-    int i = COWS_IN_PACKET * rssi_round_counter;
+    int i = COWS_IN_PACKET * mod;
 
-    if (i < NUMBER_OF_COWS) {
       for (j=0; i < last_processed_cow; i++,j++) {
         toSend[j][0] = (int8_t)(i + 1);
         toSend[j][1] = (int8_t)cluster_head_battery_data[i];
@@ -263,7 +277,7 @@ static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struc
           toSend[j][k + 3] = (int8_t)cluster_head_rssi_data[i][k];
           printf("%d, ", toSend[j][k + 3]);
           
-          cluster_head_rssi_data[i][k] = 0;
+          cluster_head_rssi_data[i][k] = 1;
         }
         printf("\n");
       }
@@ -275,7 +289,6 @@ static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struc
       unicast_send(c, &addr);
       unicast_close(c);
       printf("Cluster head sending temperature, battery and rssi data to the gateway.\n"); 
-    }
 }
 
 static void cluster_head_sends_acknowledgments()
@@ -300,19 +313,6 @@ static void init_ack_received()
 static void data_ack_received()
 {
 
-}
-
-static void open_broadcast(struct broadcast_callbacks *cl)
-{
-  if (is_broadcast_open == 0) {
-    is_broadcast_open = 1;
-    broadcast_open(&broadcast, 129, cl);
-  }
-}
-static void close_broadcast()
-{
-  broadcast_close(&broadcast);
-  is_broadcast_open = 0;
 }
 
 static void normal_mode_rssi_call() 
@@ -356,8 +356,9 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   static int temperature = -1;
   static int broadcast_data_open = 0;
 
-  reset_neighbour_list();
+  init_neighbour_bat_temp_rssi_list();
   while(1) {
+    printf("Role: %d \n", role);
     etimer_set(&round_timer, slot_round_time);
     etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 
@@ -450,12 +451,15 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       packet[1] = temperature;
       //packet[2] = motion_status;
   
-      printf("Normal mode - broadcast message sent. Bat: %d, Temp: %d, RSSI: ",
+      printf("Node sends: Bat: %d, Temp: %d, RSSI: ",
        battery_status, temperature);
 
       int ri;
       for (ri = 2; ri < NUMBER_OF_COWS + 2; ri++) {
          packet[ri] = neighbour_list[ri - 2];
+         if (rssi_round_counter == 5) {
+            neighbour_list[ri - 2] = 1;          
+         }
          printf("%d, ", packet[ri]);
       }
       printf("\n");
