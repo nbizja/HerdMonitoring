@@ -377,7 +377,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
           alarm[i] = 1;
         }
         alarm_mode = 0;
-        etimer_set(&time_last_seen, CLOCK_SECOND * 10);
+        etimer_set(&time_last_seen, CLOCK_SECOND * 30);
         restart_timer_last_seen = 0;
         flag_last_seen = 0;
       }
