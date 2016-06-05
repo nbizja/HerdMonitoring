@@ -158,18 +158,12 @@ static void node_receiving_rssi_and_acknowledgment(const struct broadcast_conn *
     int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
     neighbour_list[cow_id - 1] = rssi;
 
-    //int *ack_pointer = (int *)packetbuf_dataptr();
+    int * ack_pointer = (int *)packetbuf_dataptr();
     node_power_management_flag = 0;
-    /*
-    int ack_check = (int)packetbuf_dataptr();
-    printf("ACK CHECK : %d  %d \n", ack_check, *(ack_pointer+0));
 
-    if (ack_check == 55) { //Not an acknowledgment
-        printf("broadcast message received from cow %d with rssi %d \n",
-        cow_id, rssi);
-    } else {
+    int acknowledged_rssi = *(ack_pointer + node_id - 1);
+    if (acknowledged_rssi > -110 && acknowledged_rssi < 0) { //This is almost 100% acknowledgment
       //With what RSSI did cluster head hear our packet
-      int acknowledged_rssi = *(ack_pointer + node_id - 1);
       //printf("Current txpower: %d\n", cc2420_get_txpower());
       printf("Reported rssi is: %d\n", acknowledged_rssi);
       if (acknowledged_rssi == -101) {
@@ -183,7 +177,7 @@ static void node_receiving_rssi_and_acknowledgment(const struct broadcast_conn *
         node_power_management_flag = -1;
       }
     }
-    */
+    
   }
 }
 
@@ -210,7 +204,7 @@ static void cluster_head_broadcast_recv(const struct broadcast_conn *c, const li
 
     } else if (rssi_round_counter > 0) {
       //We increment received packet count. This will be broadcasted on every 5th interval.
-      cluster_head_ack_data[cow_id - 1] = (int8_t)packetbuf_attr(PACKETBUF_ATTR_RSSI);
+      cluster_head_ack_data[cow_id - 1] = (int)packetbuf_attr(PACKETBUF_ATTR_RSSI);
       //printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
 
       int8_t * bat_temp = (int8_t *)packetbuf_dataptr();
@@ -227,7 +221,7 @@ static void cluster_head_broadcast_recv(const struct broadcast_conn *c, const li
       }
       printf("\n");
     } else {
-      cluster_head_ack_data[cow_id - 1] = packetbuf_attr(PACKETBUF_ATTR_RSSI);
+      cluster_head_ack_data[cow_id - 1] = (int)packetbuf_attr(PACKETBUF_ATTR_RSSI);
     }
 }
 
@@ -307,7 +301,7 @@ static void cluster_head_sends_acknowledgments()
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++)
     {
-      cluster_head_ack_data[i] = 0;
+      cluster_head_ack_data[i] = -101;
     }
 }
 
@@ -490,11 +484,13 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       if (rssi_round_counter == 0) {
         printf("Broadcast - Cluster head sending acknowledgments.\n"); 
         cluster_head_sends_acknowledgments();
-      }
-      close_broadcast();
-      printf("Unicast - Sending data to the gateway.\n"); 
+      } else {
+          close_broadcast();
+          printf("Unicast - Sending data to the gateway.\n"); 
 
-      cluster_head_sends_all_data_to_gateway(&uc, &unicast_callbacks_data);
+          cluster_head_sends_all_data_to_gateway(&uc, &unicast_callbacks_data);
+      }
+
       
       //We close the connection to the gateway and start listening again for
       //broadcasts of nodes.
