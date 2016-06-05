@@ -2,7 +2,6 @@
 #include "dev/i2cmaster.h"  // Include IC driver
 #include "dev/tmp102.h"     // Include sensor driver
 #include "dev/cc2420/cc2420.h"
-#include "dev/cc2520/cc2520.h"
 #include "net/rime/rime.h"
 #include "net/rime/mesh.h"
 #include "dev/button-sensor.h"
@@ -45,8 +44,6 @@ static int neighbour_list[NUMBER_OF_COWS];
 static int mode_of_operation = 1;
 //0 -> node; 1 -> cluster head;
 static int role = 0;
-static int my_clusters[NUMBER_OF_COWS - 1];
-static int num_of_my_clusters = 0;
 
 //Cluster head saves received data from nodes in these arrays
 static int cluster_head_rssi_data[NUMBER_OF_COWS][NUMBER_OF_COWS];
@@ -55,14 +52,13 @@ static int cluster_head_temperature_data[NUMBER_OF_COWS];
 //Cluster head counts received packets from each cow. 
 //This is broadcasted every 5th round (when nodes are listening for rssi) as one global acknowledgment.
 static int cluster_head_ack_data[NUMBER_OF_COWS];
+static int node_power_management_flag; //-1 = decrease, 0 = leave as is, 1 = increase, 2 = full power
 
 // 1 = standing, 2 = moving slowly, 3 = running 
-static int motion_status = 0;
-
-static int cluster_head_sends_only_rssi = 0;
+//static int motion_status = 0;
 
 //Every five rounds we listen for whole interval so we can gather RSSI from neighbours
-static int rssi_round_counter = 0;
+static int rssi_round_counter;
 static int is_broadcast_open = 0;
 static struct broadcast_conn broadcast;
 
@@ -75,7 +71,7 @@ float floor(float x)
   }
 }
 
-static void open_broadcast(struct broadcast_callbacks *cl)
+static void open_broadcast(const struct broadcast_callbacks *cl)
 {
   if (is_broadcast_open == 0) {
     is_broadcast_open = 1;
@@ -105,10 +101,15 @@ static void init_neighbour_bat_temp_rssi_list()
   }
 }
 
+static void full_txpower()
+{
+    power_index = 7;
+    cc2420_set_txpower(TXPOWER[power_index]);
+}
+
 static void increase_txpower()
 {
-    power_index += 2;
-    if (power_index > 7) {
+    if (++power_index > 7) {
       power_index = 7;
     }
     cc2420_set_txpower(TXPOWER[power_index]);
@@ -130,6 +131,7 @@ static void parse_clustering_results(int8_t *cluster)
 
     //Checking if am cluster head.
     for (i = 0; i < NUMBER_OF_COWS; i++) {
+      //printf("CLUSTERS RECVD: %d\n", *(cluster+i));
       if (*(cluster + i) == node_id) {
           role = 1;
           printf("I, node %d, am Cluster head!\n", node_id);
@@ -143,9 +145,10 @@ static void parse_clustering_results(int8_t *cluster)
 //This function serves two purposes. It measures rssi from neighbours and
 //it accepts acknowledgment from cluster head.
 //This happens every 5th round.
-static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, const linkaddr_t *from)
+static void node_receiving_rssi_and_acknowledgment(const struct broadcast_conn *c, const linkaddr_t *from)
 {
   int cow_id = from->u8[0];
+
   if (cow_id == 0) {
     int8_t *cluster = (int8_t *)packetbuf_dataptr();
     parse_clustering_results(cluster);
@@ -154,47 +157,60 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
   else {
     int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
     neighbour_list[cow_id - 1] = rssi;
-    printf("rssi_round_counter: %d \n", rssi_round_counter);
-    if (rssi_round_counter == 5) {
-      int * ack_pointer = (int *)packetbuf_dataptr();
-      //Number of successfully
-      int ack_number = *(ack_pointer + node_id - 1);
-      printf("Ack received: %d \n", ack_number);
+
+    int * ack_pointer = (int *)packetbuf_dataptr();
+    node_power_management_flag = 0;
+
+    int acknowledged_rssi = *(ack_pointer + node_id - 1);
+    if (acknowledged_rssi > -110 && acknowledged_rssi < 0) { //This is almost 100% acknowledgment
+      //With what RSSI did cluster head hear our packet
       //printf("Current txpower: %d\n", cc2420_get_txpower());
-      if (ack_number < 5) { //If some packet was not received successfully, then increase power.
+      printf("Reported rssi is: %d\n", acknowledged_rssi);
+      if (acknowledged_rssi == -101) {
+        node_power_management_flag = 2; //Packet failed. Full power!
+        printf("Some packets failed. Full power!\n");
+
+      } else if (acknowledged_rssi < -75) { //If some packet was not received successfully, then increase power.
         printf("Increasing tx power.\n");
-        increase_txpower();
-      } else {
+        node_power_management_flag = 1;
+      } else if (acknowledged_rssi > -65) {
         printf("Decreasing tx power.\n");
-        decrease_txpower();
+        node_power_management_flag = -1;
+      } else {
+        printf("Tx power at optimal level: %d\n", acknowledged_rssi);
       }
-    } else {
-      printf("broadcast message received from cow %d with rssi %d \n",
-        cow_id, rssi);
     }
+    
   }
 }
 
+static void node_manage_power()
+{
+   if (node_power_management_flag == 2) {
+      full_txpower();
+   } else if (node_power_management_flag == 1) {
+      increase_txpower();
+   } else if (node_power_management_flag == -1) {
+      decrease_txpower();
+   }
+   node_power_management_flag = 0;
+}
 //Cluster head receiving data from nodes
-static void cluster_head_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
+static void cluster_head_broadcast_recv(const struct broadcast_conn *c, const linkaddr_t *from)
 {
     int cow_id = from->u8[0];
     if (cow_id == 0) {
 
       //printf("Clustering results received!\n");
-      int (*clusters)[NUMBER_OF_COWS] = (int (*)[NUMBER_OF_COWS])packetbuf_dataptr();
-
-      int i,j;
-      int k = 0;
-
+      int8_t *clusters = (int8_t *)packetbuf_dataptr();
       parse_clustering_results(clusters);
 
-    } else {
+    } else if (rssi_round_counter > 0) {
       //We increment received packet count. This will be broadcasted on every 5th interval.
-      cluster_head_ack_data[cow_id - 1]++;
+      cluster_head_ack_data[cow_id - 1] = (int)packetbuf_attr(PACKETBUF_ATTR_RSSI);
       //printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
 
-      int * bat_temp = (int *)packetbuf_dataptr();
+      int8_t * bat_temp = (int8_t *)packetbuf_dataptr();
 
       cluster_head_battery_data[cow_id - 1] = *(bat_temp + 0);
       cluster_head_temperature_data[cow_id - 1] = *(bat_temp + 1);
@@ -207,21 +223,12 @@ static void cluster_head_broadcast_recv(struct broadcast_conn *c, const linkaddr
         cluster_head_rssi_data[cow_id - 1][i - 2] = *(bat_temp + i);
       }
       printf("\n");
+    } else {
+      cluster_head_ack_data[cow_id - 1] = (int)packetbuf_attr(PACKETBUF_ATTR_RSSI);
     }
 }
 
-static void neighour_data_recv(struct broadcast_conn *c, const linkaddr_t *from)
-{
-    printf("RSSI data received received!\n");
-
-    int *neighbour_data = (int *)packetbuf_dataptr();
-    int i;
-    for (i = 0; i < NUMBER_OF_COWS; i++) {
-      cluster_head_rssi_data[from->u8[0]][i] = *(neighbour_data + i);      
-    }
-}
-
-static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
+static void clustering_broadcast_recv(const struct broadcast_conn *c, const linkaddr_t *from)
 {
     //printf("Clustering results received!\n");
 
@@ -233,7 +240,7 @@ static void clustering_broadcast_recv(struct broadcast_conn *c, const linkaddr_t
     mode_of_operation = 4;
 }
 
-static void init_send_to_gateway(struct unicast_conn *c)
+static void init_send_to_gateway(const struct unicast_conn *c)
 {
     static linkaddr_t addr;
     addr.u8[0] = 0;
@@ -244,7 +251,7 @@ static void init_send_to_gateway(struct unicast_conn *c)
     printf("Neighbour list sent to the gateway\n");
 }
 
-static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struct unicast_callbacks *callback)
+static void cluster_head_sends_all_data_to_gateway(const struct unicast_conn *c, struct unicast_callbacks *callback)
 {
     static linkaddr_t addr;
     addr.u8[0] = 0;
@@ -281,14 +288,12 @@ static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struc
         }
         printf("\n");
       }
-      //We also have to send head's data.
-      //toSend[node_id - 1][0] = b;
-      //toSend[node_id - 1][1] = t;
+
       unicast_open(c, 146, callback);
       packetbuf_copyfrom(toSend, sizeof(toSend));
       unicast_send(c, &addr);
       unicast_close(c);
-      printf("Cluster head sending temperature, battery and rssi data to the gateway.\n"); 
+
 }
 
 static void cluster_head_sends_acknowledgments()
@@ -299,7 +304,7 @@ static void cluster_head_sends_acknowledgments()
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++)
     {
-      cluster_head_ack_data[i] = 0;
+      cluster_head_ack_data[i] = -101;
     }
 }
 
@@ -312,12 +317,6 @@ static void init_ack_received()
 
 static void data_ack_received()
 {
-
-}
-
-static void normal_mode_rssi_call() 
-{
-    printf("Broadcast is open... \n");    
 
 }
 
@@ -338,10 +337,10 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   )
   
   PROCESS_BEGIN();
+  rssi_round_counter = 0;
   //Time [ms] for whole round of slots (+1 is for gateway)
   static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1);
 
-  static struct etimer et;
   static struct etimer round_timer;
   static struct etimer init_broadcast_timer;
   //printf("timer: %d \n", CLOCK_SECOND * PACKET_TIME * 0.00001 * node_id); 
@@ -349,16 +348,16 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   //Timer for battery and temperature. We send them every 30 seconds.
   static struct etimer battery_temp_timer;
 
-  static int init_phase = 1;
-
   static int battery_temp_status = 1;
   static int battery_status = -1;
   static int temperature = -1;
-  static int broadcast_data_open = 0;
+  node_power_management_flag = 0;
+
+  static int not_a_rssi = 55;
 
   init_neighbour_bat_temp_rssi_list();
   while(1) {
-    printf("Role: %d \n", role);
+
     etimer_set(&round_timer, slot_round_time);
     etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 
@@ -369,15 +368,14 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     }
 
     //Every 5 intervals we listen for whole interval
-    if (rssi_round_counter == 5 && mode_of_operation == 4) {
+    if (rssi_round_counter == 0 && mode_of_operation == 4) {
+      
+      int i;
+      for(i = 0; i > NUMBER_OF_COWS; i++) {
+        neighbour_list[i] = 1;
+      }
+      //We listen and compute RSSI 
       open_broadcast(&broadcast_call);
-    }
-
-    /**********************************************************
-                    MOTION SENSING
-    ***********************************************************/
-    if (rssi_round_counter == 5) {
-      motion_status = node_id % 3;
     }
     /**********************************************************
                     BATTERY AND TEMPERATURE
@@ -392,8 +390,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       temperature = (int)tmp102_read_temp_raw();
       battery_temp_status = 1;
 
-      printf("Battery: %i (%ld.%03d mV),   temperature: %d  \n", battery_status, (long)mv,
-       (unsigned)((mv - floor(mv)) * 1000), temperature);
+      //printf("Battery: %i (%ld.%03d mV),   temperature: %d  \n", battery_status, (long)mv,
+      // (unsigned)((mv - floor(mv)) * 1000), temperature);
 
       SENSORS_DEACTIVATE(battery_sensor);
     }
@@ -406,7 +404,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
                     SENDING STUFF
     ************************************************************/
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
-
+    node_manage_power();
 
     /**********************************************************
                     INITIALIZATION PHASE
@@ -415,7 +413,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
       printf("Waiting for my slot...\n"); 
       printf("Timer expired... \n");
-      packetbuf_copyfrom("Initialization...\n", 6);
+      packetbuf_copyfrom(node_manage_power, sizeof(not_a_rssi));
       broadcast_send(&broadcast);
       printf("broadcast message sent\n"); 
     
@@ -445,29 +443,29 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     if (role == 0 && mode_of_operation == 4) {
       // Fixed packet size. packet[0] = battery, packet[1] = temp status, 
       // packet[2] = motion status, packet[3: 3+NUMBER_OF_COWS] = RSSI of neighbours 
-      int packet[NUMBER_OF_COWS + 2];
-
-      packet[0] = battery_status;
-      packet[1] = temperature;
-      //packet[2] = motion_status;
-  
-      printf("Node sends: Bat: %d, Temp: %d, RSSI: ",
-       battery_status, temperature);
-
-      int ri;
-      for (ri = 2; ri < NUMBER_OF_COWS + 2; ri++) {
-         packet[ri] = neighbour_list[ri - 2];
-         if (rssi_round_counter == 5) {
-            neighbour_list[ri - 2] = 1;          
-         }
-         printf("%d, ", packet[ri]);
-      }
-      printf("\n");
-
       open_broadcast(&broadcast_data_call);
-      packetbuf_copyfrom(packet, sizeof(packet));
-      broadcast_send(&broadcast);
+
+      //5th we are sending only to gather rssi.
+      if (rssi_round_counter == 0) {
+        packetbuf_copyfrom(not_a_rssi, sizeof(not_a_rssi));
+      } else {
+        int packet[NUMBER_OF_COWS + 2];
+        packet[0] = battery_status;
+        packet[1] = temperature;
     
+        printf("Node sends: Bat: %d, Temp: %d, RSSI: ",
+         battery_status, temperature);
+
+        int ri;
+        for (ri = 2; ri < NUMBER_OF_COWS + 2; ri++) {
+           packet[ri] = neighbour_list[ri - 2];
+           printf("%d, ", packet[ri]);
+        }
+        printf("\n");
+        packetbuf_copyfrom(packet, sizeof(packet));
+      }
+
+      broadcast_send(&broadcast);
       close_broadcast(); 
     }
 
@@ -478,7 +476,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
        Array has to be sorted for that purpose.
        If 2 members are sequential, connection should not close in beetwen.*/
     if (role == 1 && mode_of_operation == 4) {     
-        printf("Listening to broadcast data (temperature, battery).\n"); 
+        //printf("Listening to broadcast data (temperature, battery).\n"); 
         open_broadcast(&broadcast_data_call);
     }
 
@@ -486,18 +484,18 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           HEAD CLUSTER SENDS ALL DATA TO GATEWAY
     ***********************************************************/
     if (role == 1 && mode_of_operation == 4) {
-      if (rssi_round_counter == 5) {
+      if (rssi_round_counter == 0) {
         printf("Broadcast - Cluster head sending acknowledgments.\n"); 
         cluster_head_sends_acknowledgments();
-      }
-      close_broadcast();
-      printf("Unicast - Sending data to the gateway.\n"); 
+      } else {
+          close_broadcast();
+          printf("Unicast - Sending data to the gateway.\n"); 
 
-      cluster_head_sends_all_data_to_gateway(&uc, &unicast_callbacks_data);
-      
-      //We close the connection to the gateway and start listening again for
-      //broadcasts of nodes.
-      open_broadcast(&broadcast_data_call);
+          cluster_head_sends_all_data_to_gateway(&uc, &unicast_callbacks_data);
+                    //We close the connection to the gateway and start listening again for
+          //broadcasts of nodes.
+          open_broadcast(&broadcast_data_call);
+      }
     }
 
 
@@ -506,11 +504,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       close_broadcast(); 
       mode_of_operation++;
     } else if (mode_of_operation == 4) { // Normal mode. Increment counter for RSSI listening round
-      if (rssi_round_counter == 5) {
-        rssi_round_counter = 0;
-      } else {
-        rssi_round_counter++;
-      }
+        rssi_round_counter = ++rssi_round_counter % 5;
     }
 
   }

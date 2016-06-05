@@ -140,6 +140,12 @@ static void compute_clusters(int RSSI[NUMBER_OF_COWS][NUMBER_OF_COWS], struct br
     }
 
     int8_t clust[NUMBER_OF_COWS];
+
+    for (i = 0; i < NUMBER_OF_COWS; i++) {
+      clust[i] = 0;
+    }
+
+
     for (i = 0; i < NUMBER_OF_COWS; i++) {
       int p = findPower(power, clusters[i][0]);
       if (p > 0) {
@@ -335,6 +341,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
     static struct etimer time_last_seen;
     static struct etimer round_timer;
     static struct etimer reclustering_timer;
+    static struct etimer init_broadcast_timer;
     //etimer_set(&round_timer, CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1));
     static int flag = 0;
     unicast_open(&uc, 146, &unicast_callbacks);
@@ -342,7 +349,6 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
 
     etimer_set(&et, CLOCK_SECOND * 2 * PACKET_TIME * (NUMBER_OF_COWS + 1));
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-
     //Initializing alarm and time_last_seen array.
     int i;
     for (i = 0; i < NUMBER_OF_COWS; i++) {
@@ -355,7 +361,10 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
       unicast_open(&uc, 146, &unicast_callbacks_data);
 
       etimer_set(&round_timer, CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1));
-      if (flag % 15 == 0) {
+      etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
+
+      if (flag % 40 == 0) {
+
         unicast_close(&uc);
         broadcast_open(&broadcast, 129, &broadcast_call);
         printf("GATEWAY is computing clusters....\n");
@@ -368,7 +377,7 @@ PROCESS_THREAD (herd_monitor_gateway, ev, data)
           alarm[i] = 1;
         }
         alarm_mode = 0;
-        etimer_set(&time_last_seen, CLOCK_SECOND * 10);
+        etimer_set(&time_last_seen, CLOCK_SECOND * 30);
         restart_timer_last_seen = 0;
         flag_last_seen = 0;
       }
