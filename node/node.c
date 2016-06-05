@@ -130,7 +130,7 @@ static void parse_clustering_results(int8_t *cluster)
 
     //Checking if am cluster head.
     for (i = 0; i < NUMBER_OF_COWS; i++) {
-      printf("CLUSTERS RECVD: %d\n", *(cluster+i));
+      //printf("CLUSTERS RECVD: %d\n", *(cluster+i));
       if (*(cluster + i) == node_id) {
           role = 1;
           printf("I, node %d, am Cluster head!\n", node_id);
