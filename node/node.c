@@ -62,7 +62,7 @@ static int motion_status = 0;
 static int cluster_head_sends_only_rssi = 0;
 
 //Every five rounds we listen for whole interval so we can gather RSSI from neighbours
-static int rssi_round_counter = 0;
+static int rssi_round_counter;
 static int is_broadcast_open = 0;
 static struct broadcast_conn broadcast;
 
@@ -130,6 +130,7 @@ static void parse_clustering_results(int8_t *cluster)
 
     //Checking if am cluster head.
     for (i = 0; i < NUMBER_OF_COWS; i++) {
+      printf("CLUSTERS RECVD: %d\n", *(cluster+i));
       if (*(cluster + i) == node_id) {
           role = 1;
           printf("I, node %d, am Cluster head!\n", node_id);
@@ -146,6 +147,7 @@ static void parse_clustering_results(int8_t *cluster)
 static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, const linkaddr_t *from)
 {
   int cow_id = from->u8[0];
+
   if (cow_id == 0) {
     int8_t *cluster = (int8_t *)packetbuf_dataptr();
     parse_clustering_results(cluster);
@@ -154,8 +156,8 @@ static void node_receiving_rssi_and_acknowledgment(struct broadcast_conn *c, con
   else {
     int rssi = packetbuf_attr(PACKETBUF_ATTR_RSSI);
     neighbour_list[cow_id - 1] = rssi;
-    printf("rssi_round_counter: %d \n", rssi_round_counter);
-    if (rssi_round_counter == 5) {
+
+    if (rssi_round_counter == 0 && false) {
       int * ack_pointer = (int *)packetbuf_dataptr();
       //Number of successfully
       int ack_number = *(ack_pointer + node_id - 1);
@@ -281,14 +283,12 @@ static void cluster_head_sends_all_data_to_gateway(struct unicast_conn *c, struc
         }
         printf("\n");
       }
-      //We also have to send head's data.
-      //toSend[node_id - 1][0] = b;
-      //toSend[node_id - 1][1] = t;
+
       unicast_open(c, 146, callback);
       packetbuf_copyfrom(toSend, sizeof(toSend));
       unicast_send(c, &addr);
       unicast_close(c);
-      printf("Cluster head sending temperature, battery and rssi data to the gateway.\n"); 
+
 }
 
 static void cluster_head_sends_acknowledgments()
@@ -338,6 +338,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
   )
   
   PROCESS_BEGIN();
+  rssi_round_counter = 0;
   //Time [ms] for whole round of slots (+1 is for gateway)
   static int slot_round_time = CLOCK_SECOND *  PACKET_TIME * (NUMBER_OF_COWS + 1);
 
@@ -358,7 +359,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
   init_neighbour_bat_temp_rssi_list();
   while(1) {
-    printf("Role: %d \n", role);
+
     etimer_set(&round_timer, slot_round_time);
     etimer_set(&init_broadcast_timer, CLOCK_SECOND * PACKET_TIME * node_id);
 
@@ -369,14 +370,14 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     }
 
     //Every 5 intervals we listen for whole interval
-    if (rssi_round_counter == 5 && mode_of_operation == 4) {
+    if (rssi_round_counter == 0 && mode_of_operation == 4) {
       open_broadcast(&broadcast_call);
     }
 
     /**********************************************************
                     MOTION SENSING
     ***********************************************************/
-    if (rssi_round_counter == 5) {
+    if (rssi_round_counter == 0) {
       motion_status = node_id % 3;
     }
     /**********************************************************
@@ -392,8 +393,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       temperature = (int)tmp102_read_temp_raw();
       battery_temp_status = 1;
 
-      printf("Battery: %i (%ld.%03d mV),   temperature: %d  \n", battery_status, (long)mv,
-       (unsigned)((mv - floor(mv)) * 1000), temperature);
+      //printf("Battery: %i (%ld.%03d mV),   temperature: %d  \n", battery_status, (long)mv,
+      // (unsigned)((mv - floor(mv)) * 1000), temperature);
 
       SENSORS_DEACTIVATE(battery_sensor);
     }
@@ -457,8 +458,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       int ri;
       for (ri = 2; ri < NUMBER_OF_COWS + 2; ri++) {
          packet[ri] = neighbour_list[ri - 2];
-         if (rssi_round_counter == 5) {
-            neighbour_list[ri - 2] = 1;          
+         if (rssi_round_counter == 0) {
+            //neighbour_list[ri - 2] = 1;          
          }
          printf("%d, ", packet[ri]);
       }
@@ -478,7 +479,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
        Array has to be sorted for that purpose.
        If 2 members are sequential, connection should not close in beetwen.*/
     if (role == 1 && mode_of_operation == 4) {     
-        printf("Listening to broadcast data (temperature, battery).\n"); 
+        //printf("Listening to broadcast data (temperature, battery).\n"); 
         open_broadcast(&broadcast_data_call);
     }
 
@@ -486,7 +487,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           HEAD CLUSTER SENDS ALL DATA TO GATEWAY
     ***********************************************************/
     if (role == 1 && mode_of_operation == 4) {
-      if (rssi_round_counter == 5) {
+      if (rssi_round_counter == 0) {
         printf("Broadcast - Cluster head sending acknowledgments.\n"); 
         cluster_head_sends_acknowledgments();
       }
@@ -506,11 +507,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       close_broadcast(); 
       mode_of_operation++;
     } else if (mode_of_operation == 4) { // Normal mode. Increment counter for RSSI listening round
-      if (rssi_round_counter == 5) {
-        rssi_round_counter = 0;
-      } else {
-        rssi_round_counter++;
-      }
+        rssi_round_counter = ++rssi_round_counter % 5;
     }
 
   }
