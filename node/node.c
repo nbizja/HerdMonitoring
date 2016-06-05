@@ -191,7 +191,7 @@ static void cluster_head_broadcast_recv(struct broadcast_conn *c, const linkaddr
 
       parse_clustering_results(clusters);
 
-    } else {
+    } else if (rssi_round_counter > 0) {
       //We increment received packet count. This will be broadcasted on every 5th interval.
       cluster_head_ack_data[cow_id - 1]++;
       //printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
@@ -209,6 +209,8 @@ static void cluster_head_broadcast_recv(struct broadcast_conn *c, const linkaddr
         cluster_head_rssi_data[cow_id - 1][i - 2] = *(bat_temp + i);
       }
       printf("\n");
+    } else {
+      cluster_head_ack_data[cow_id - 1]++;
     }
 }
 
@@ -371,14 +373,13 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
 
     //Every 5 intervals we listen for whole interval
     if (rssi_round_counter == 0 && mode_of_operation == 4) {
+      
+      int i;
+      for(i = 0; i > NUMBER_OF_COWS; i++) {
+        neighbour_list[i] = 1;
+      }
+      //We listen and compute RSSI 
       open_broadcast(&broadcast_call);
-    }
-
-    /**********************************************************
-                    MOTION SENSING
-    ***********************************************************/
-    if (rssi_round_counter == 0) {
-      motion_status = node_id % 3;
     }
     /**********************************************************
                     BATTERY AND TEMPERATURE
@@ -446,29 +447,30 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     if (role == 0 && mode_of_operation == 4) {
       // Fixed packet size. packet[0] = battery, packet[1] = temp status, 
       // packet[2] = motion status, packet[3: 3+NUMBER_OF_COWS] = RSSI of neighbours 
-      int packet[NUMBER_OF_COWS + 2];
-
-      packet[0] = battery_status;
-      packet[1] = temperature;
-      //packet[2] = motion_status;
-  
-      printf("Node sends: Bat: %d, Temp: %d, RSSI: ",
-       battery_status, temperature);
-
-      int ri;
-      for (ri = 2; ri < NUMBER_OF_COWS + 2; ri++) {
-         packet[ri] = neighbour_list[ri - 2];
-         if (rssi_round_counter == 4) {
-            neighbour_list[ri - 2] = 1;          
-         }
-         printf("%d, ", packet[ri]);
-      }
-      printf("\n");
-
       open_broadcast(&broadcast_data_call);
-      packetbuf_copyfrom(packet, sizeof(packet));
-      broadcast_send(&broadcast);
+
+      //5th we are sending only to gather rssi.
+      if (rssi_round_counter == 0) {
+        packetbuf_copyfrom("Hello world!", sizeof("Hello world!")); 
+        
+      } else {
+        int packet[NUMBER_OF_COWS + 2];
+        packet[0] = battery_status;
+        packet[1] = temperature;
     
+        printf("Node sends: Bat: %d, Temp: %d, RSSI: ",
+         battery_status, temperature);
+
+        int ri;
+        for (ri = 2; ri < NUMBER_OF_COWS + 2; ri++) {
+           packet[ri] = neighbour_list[ri - 2];
+           printf("%d, ", packet[ri]);
+        }
+        printf("\n");
+        packetbuf_copyfrom(packet, sizeof(packet));
+      }
+
+      broadcast_send(&broadcast);
       close_broadcast(); 
     }
 
