@@ -458,8 +458,8 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       int ri;
       for (ri = 2; ri < NUMBER_OF_COWS + 2; ri++) {
          packet[ri] = neighbour_list[ri - 2];
-         if (rssi_round_counter == 0) {
-            //neighbour_list[ri - 2] = 1;          
+         if (rssi_round_counter == 4) {
+            neighbour_list[ri - 2] = 1;          
          }
          printf("%d, ", packet[ri]);
       }
