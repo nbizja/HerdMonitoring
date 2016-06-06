@@ -16,7 +16,7 @@
 
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
-#define NUMBER_OF_COWS 15 //Number of cows
+#define NUMBER_OF_COWS 5 //Number of cows
 #define PACKET_TIME 0.3
 #define COWS_IN_PACKET 5
 
@@ -112,6 +112,7 @@ static void increase_txpower()
     if (++power_index > 7) {
       power_index = 7;
     }
+    //printf("Power index %d\n", power_index);
     cc2420_set_txpower(TXPOWER[power_index]);
 }
 
@@ -210,11 +211,11 @@ static void cluster_head_broadcast_recv(const struct broadcast_conn *c, const li
       cluster_head_ack_data[cow_id - 1] = (int)packetbuf_attr(PACKETBUF_ATTR_RSSI);
       //printf("Battery, temperat and rssi list received from cow %d \n", cow_id);
 
-      int8_t * bat_temp = (int8_t *)packetbuf_dataptr();
+      int * bat_temp = (int *)packetbuf_dataptr();
 
       cluster_head_battery_data[cow_id - 1] = *(bat_temp + 0);
       cluster_head_temperature_data[cow_id - 1] = *(bat_temp + 1);
-      printf("CLUSTER HEAD RECEIVED DATA: %d, %d", 
+      printf("Cluster head received data from %d: %d, %d", cow_id,
         cluster_head_battery_data[cow_id - 1], 
         cluster_head_temperature_data[cow_id - 1]);
       int i;
@@ -368,10 +369,10 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     }
 
     //Every 5 intervals we listen for whole interval
-    if (rssi_round_counter == 0 && mode_of_operation == 4) {
+    if (rssi_round_counter == 4 && mode_of_operation == 4) {
       
       int i;
-      for(i = 0; i > NUMBER_OF_COWS; i++) {
+      for(i = 0; i < NUMBER_OF_COWS; i++) {
         neighbour_list[i] = 1;
       }
       //We listen and compute RSSI 
@@ -403,8 +404,9 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
     /***********************************************************
                     SENDING STUFF
     ************************************************************/
+                    node_manage_power();
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&init_broadcast_timer));
-    node_manage_power();
+    
 
     /**********************************************************
                     INITIALIZATION PHASE
@@ -446,7 +448,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
       open_broadcast(&broadcast_data_call);
 
       //5th we are sending only to gather rssi.
-      if (rssi_round_counter == 0) {
+      if (rssi_round_counter == 4) {
         packetbuf_copyfrom(not_a_rssi, sizeof(not_a_rssi));
       } else {
         int packet[NUMBER_OF_COWS + 2];
@@ -484,7 +486,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
           HEAD CLUSTER SENDS ALL DATA TO GATEWAY
     ***********************************************************/
     if (role == 1 && mode_of_operation == 4) {
-      if (rssi_round_counter == 0) {
+      if (rssi_round_counter == 4) {
         printf("Broadcast - Cluster head sending acknowledgments.\n"); 
         cluster_head_sends_acknowledgments();
       } else {
