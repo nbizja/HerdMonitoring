@@ -16,7 +16,7 @@
 
 
 #define TMP102_READ_INTERVAL (CLOCK_SECOND)  // Poll the sensor every second
-#define NUMBER_OF_COWS 5 //Number of cows
+#define NUMBER_OF_COWS 15 //Number of cows
 #define PACKET_TIME 0.3
 #define COWS_IN_PACKET 5
 
@@ -189,6 +189,7 @@ static void node_manage_power()
 {
    if (node_power_management_flag == 2) {
       full_txpower();
+      printf("Im probably lost. enable super power! \n");
    } else if (node_power_management_flag == 1) {
       increase_txpower();
    } else if (node_power_management_flag == -1) {
@@ -376,6 +377,7 @@ PROCESS_THREAD (herd_monitor_node, ev, data)
         neighbour_list[i] = 1;
       }
       //We listen and compute RSSI 
+      node_power_management_flag = 2;
       open_broadcast(&broadcast_call);
     }
     /**********************************************************
