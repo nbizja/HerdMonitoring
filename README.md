@@ -8,4 +8,4 @@ http://zolertia.io/z1
 http://www.contiki-os.org/
 
 
-Group members: Nejc Bizjak, Neža Belej, Žan Anderle
+Group members: Nejc Bizjak, Neža Belej
